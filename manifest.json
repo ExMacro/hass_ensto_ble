@@ -1,0 +1,15 @@
+{
+    "domain": "hass_ensto_ble",
+    "name": "Hass Ensto BLE",
+    "codeowners": ["@ExMacro"],
+    "config_flow": true,
+    "dependencies": ["bluetooth_adapters"],
+    "documentation": "https://github.com/ExMacro/hass_ensto_ble",
+    "issue_tracker": "https://github.com/ExMacro/hass_ensto_ble/issues",
+    "iot_class": "local_polling",
+    "requirements": [],
+    "version": "0.1.0",
+    "homeassistant": {
+        "components": ["bluetooth", "select", "switch", "sensor"]
+    }
+}

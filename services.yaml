@@ -1,0 +1,11 @@
+set_device_name:
+  name: Set device name
+  description: Set a new name for the Ensto device
+  fields:
+    name:
+      name: Name
+      description: New name for the device
+      required: true
+      example: "Test Thermostat"
+      selector:
+        text:
