@@ -3,7 +3,6 @@ _Custom component to read and write data from Ensto BLE thermostats._
 
 ## Note
 - This is an early development version. It's a hobby project and will be developed slowly for my own purposes. Please be patient.
-- Currently support only one Ensto BLE thermostat
 - Currently this integration does not work with ESP32 bluetooth proxy
 - Currently this integration supports a limited amount of functionality compared to Ensto Heat app
 - Integration tested on Raspberry PI 4, Home Assistant OS 14.1, Supervisor 2024.12.3, Core 2025.1.4
@@ -32,8 +31,10 @@ _Custom component to read and write data from Ensto BLE thermostats._
 
 ### Enable boost mode on the Ensto BLE thermostat
 1. Navigate to "Settings" -> "Devices & services" and click on the device
-2. Enable "Ensto Boost Mode"
-3. Sensor "Ensto Boost Remaining" will start counting from set boost time to zero and turn off automatically. Note! Currently the boost time or temperature change can't be set from the integration.
+2. Set Boost duration in minutes
+3. Set Boost temperature offset in Celsius
+4. Enable "Ensto Boost Mode"
+5. Sensor "Ensto Boost Remaining" will start counting from set boost time to zero and turn off automatically.
 
 ### Enable adaptive temperature control on the Ensto BLE thermostat
 1. Navigate to "Settings" -> "Devices & services" and click on the device
