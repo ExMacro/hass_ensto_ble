@@ -47,31 +47,34 @@ class EnstoBoostSwitch(EnstoBaseEntity, SwitchEntity):
         return self._is_on
 
     async def async_turn_on(self, **kwargs) -> None:
-        """Turn the boost on."""
-        # Load settings if not cached
-        if self._boost_settings is None:
-            self._boost_settings = await self._manager.read_boost()
-
-        if self._boost_settings:
-            # Apply boost with current settings or defaults
-            await self._manager.write_boost(
-                enabled=True,
-                offset_degrees=self._boost_settings.get('offset_degrees', 2),
-                offset_percentage=self._boost_settings.get('offset_percentage', 0),
-                duration_minutes=self._boost_settings.get('setpoint_minutes', 60)
-            )
-            self._is_on = True
+       """Turn the boost on."""
+       try:
+           self._boost_settings = await self._manager.read_boost()
+           if self._boost_settings:
+               await self._manager.write_boost(
+                   enabled=True,
+                   offset_degrees=self._boost_settings['offset_degrees'],
+                   offset_percentage=self._boost_settings['offset_percentage'],
+                   duration_minutes=self._boost_settings['setpoint_minutes']
+               )
+               self._is_on = True
+       except Exception as e:
+           _LOGGER.error("Failed to enable boost mode: %s", e)
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Turn the boost off."""
-        if self._boost_settings:
-            await self._manager.write_boost(
-                enabled=False,
-                offset_degrees=self._boost_settings.get('offset_degrees', 2),
-                offset_percentage=self._boost_settings.get('offset_percentage', 0),
-                duration_minutes=self._boost_settings.get('setpoint_minutes', 60)
-            )
-            self._is_on = False
+       """Turn the boost off."""
+       try:
+           self._boost_settings = await self._manager.read_boost()
+           if self._boost_settings:
+               await self._manager.write_boost(
+                   enabled=False,
+                   offset_degrees=self._boost_settings['offset_degrees'],
+                   offset_percentage=self._boost_settings['offset_percentage'],
+                   duration_minutes=self._boost_settings['setpoint_minutes']
+               )
+               self._is_on = False
+       except Exception as e:
+           _LOGGER.error("Failed to disable boost mode: %s", e)
 
     async def async_update(self) -> None:
         """Update boost state."""
@@ -79,6 +82,9 @@ class EnstoBoostSwitch(EnstoBaseEntity, SwitchEntity):
             self._boost_settings = await self._manager.read_boost()
             if self._boost_settings:
                 self._is_on = self._boost_settings['enabled']
+                # Check for remaining minutes
+                if self._boost_settings['remaining_minutes'] == 0:
+                    self._is_on = False
         except Exception as e:
             _LOGGER.error("Error updating boost state: %s", e)
 

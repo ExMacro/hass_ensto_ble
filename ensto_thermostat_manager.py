@@ -441,34 +441,6 @@ class EnstoThermostatManager:
             _LOGGER.error("Error checking pairing status: %s", e)
             return False
 
-    async def enable_boost(self) -> None:
-        """Enable boost mode."""
-        try:
-            boost_settings = await self.read_boost()
-            if boost_settings:
-                await self.write_boost(
-                    enabled=True,
-                    offset_degrees=boost_settings.get('offset_degrees', 2),
-                    offset_percentage=boost_settings.get('offset_percentage', 0),
-                    duration_minutes=boost_settings.get('setpoint_minutes', 60)
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to enable boost mode: %s", e)
-
-    async def disable_boost(self) -> None:
-        """Disable boost mode."""
-        try:
-            boost_settings = await self.read_boost()
-            if boost_settings:
-                await self.write_boost(
-                    enabled=False,
-                    offset_degrees=boost_settings.get('offset_degrees', 2),
-                    offset_percentage=boost_settings.get('offset_percentage', 0),
-                    duration_minutes=boost_settings.get('setpoint_minutes', 60)
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to disable boost mode: %s", e)
-
     async def set_heating_mode(self, mode: int) -> None:
         """Set heating mode."""
         try:
