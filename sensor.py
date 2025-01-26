@@ -112,13 +112,13 @@ class EnstoTemperatureSensor(EnstoBaseSensor):
         self._attr_state_class = SensorStateClass.MEASUREMENT
         
         if sensor_type == "room":
-            self._attr_name = "Ensto Room Temperature"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Room Temperature"
             self._data_key = "room_temperature"
         elif sensor_type == "floor":
-            self._attr_name = "Ensto Floor Temperature"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Temperature"
             self._data_key = "floor_temperature"
         else:  # target
-            self._attr_name = "Ensto Target Temperature"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Target Temperature"
             self._data_key = "target_temperature"
             
         self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}_temp"
@@ -131,10 +131,10 @@ class EnstoStateSensor(EnstoBaseSensor):
         super().__init__(manager, sensor_type)
         
         if sensor_type == "relay":
-            self._attr_name = "Ensto Relay State"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Relay State"
             self._data_key = "relay_active"
         else:  # boost
-            self._attr_name = "Ensto Boost State"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost State"
             self._data_key = "boost_enabled"
             
         self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}_state"
@@ -147,10 +147,10 @@ class EnstoModeSensor(EnstoBaseSensor):
         super().__init__(manager, sensor_type)
         
         if sensor_type == "active":
-            self._attr_name = "Ensto Active Mode"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Active Mode"
             self._data_key = "active_mode"
         else:  # heating
-            self._attr_name = "Ensto Heating Mode"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Heating Mode"
             self._data_key = "heating_mode"
             
         self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}_mode"
@@ -165,13 +165,13 @@ class EnstoNumberSensor(EnstoBaseSensor):
         if "boost" in sensor_type:
             self._attr_native_unit_of_measurement = UNIT_MINUTES
             if sensor_type == "boost_setpoint":
-                self._attr_name = "Ensto Boost Setpoint"
+                self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Setpoint"
                 self._data_key = "boost_setpoint_minutes"
             else:  # boost_remaining
-                self._attr_name = "Ensto Boost Remaining"
+                self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Remaining"
                 self._data_key = "boost_remaining_minutes"
         else:  # alarm
-            self._attr_name = "Ensto Alarm Status"
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Alarm Status"
             self._data_key = "alarm_code"
             self._active_alarms_key = "active_alarms"
             

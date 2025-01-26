@@ -36,7 +36,7 @@ class EnstoBoostSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)   # Call parent class __init__
-        self._attr_name = "Ensto Boost Mode"
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Mode"
         self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_switch"
         self._is_on = False
         self._boost_settings = None
@@ -90,7 +90,7 @@ class EnstoAdaptiveTempSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)  # Call parent class __init__
-        self._attr_name = "Ensto Adaptive Temperature Control"
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Adaptive Temperature Control"
         self._attr_unique_id = f"ensto_{self._manager.mac_address}_adaptive_temp_switch"
         self._is_on = False
 

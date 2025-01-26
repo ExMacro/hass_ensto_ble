@@ -54,7 +54,7 @@ class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
     def __init__(self, manager):
         """Initialize the select."""
         super().__init__(manager)  # Call parent class __init__
-        self._attr_name = "Ensto Heating Mode"
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Heating Mode"
         self._attr_unique_id = f"ensto_{self._manager.mac_address}_heating_mode_select"
         self._current_mode = None
         self._available_modes = None
