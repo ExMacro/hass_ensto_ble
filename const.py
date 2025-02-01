@@ -66,8 +66,54 @@ HEATING_MODES_ELTE6 = {
     5: "Force Control"
 }
 
-# Service identifiers
-SERVICE_SET_VACATION = "set_vacation"
+# Floor sensor types (only the ones in Ensto app) and parameter values (as written to device by Ensto app)
+FLOOR_SENSOR_CONFIG = {
+    "10 kOhm": {
+        "sensor_type": 2,
+        "sensor_missing_limit": 4007,
+        "sensor_b_value": 3800,
+        "pull_up_resistor": 47000,
+        "sensor_broken_limit": 100,
+        "resistance_25c": 10000,
+        "offset": -1
+    },
+    "12 kOhm": {
+        "sensor_type": 3,
+        "sensor_missing_limit": 4007,
+        "sensor_b_value": 3600,
+        "pull_up_resistor": 47000,
+        "sensor_broken_limit": 100,
+        "resistance_25c": 12000,
+        "offset": -7
+    },
+    "15 kOhm": {
+        "sensor_type": 4,
+        "sensor_missing_limit": 4007,
+        "sensor_b_value": 3400,
+        "pull_up_resistor": 47000,
+        "sensor_broken_limit": 100,
+        "resistance_25c": 15000,
+        "offset": -5
+    },
+    "33 kOhm": {
+        "sensor_type": 6,
+        "sensor_missing_limit": 4007,
+        "sensor_b_value": 4100,
+        "pull_up_resistor": 47000,
+        "sensor_broken_limit": 100,
+        "resistance_25c": 33000,
+        "offset": -4
+    },
+    "47 kOhm": {
+        "sensor_type": 7,
+        "sensor_missing_limit": 4007,
+        "sensor_b_value": 3850,
+        "pull_up_resistor": 47000,
+        "sensor_broken_limit": 100,
+        "resistance_25c": 47000,
+        "offset": -8
+    }
+}
 
 # Device GATT service UUIDs
 # 2.1.1. Manufacturer name string
