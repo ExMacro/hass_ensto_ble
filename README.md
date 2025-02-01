@@ -40,3 +40,9 @@ _Custom component to read and write data from Ensto BLE thermostats._
 1. Navigate to "Settings" -> "Devices & services" and click on the device
 2. Enable "Ensto Adaptive Temperature Control". Note! This is a simple switch to enable/disable adaptive temperature change on the device.
 
+### Change the floor sensor type
+1. Navigate to "Settings" -> "Devices & services" and click on the device
+2. Change the Floor sensor type from the drop down menu
+3. After a while, the thermostat will return a new temperature value based on the new floor sensor type
+
+
