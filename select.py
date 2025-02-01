@@ -186,8 +186,11 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
                     f"\n  Offset: {offset}"
                 )
 
-                if sensor_type in FLOOR_SENSOR_CONFIG:
-                    self._current_type = FLOOR_SENSOR_CONFIG[sensor_type]
-                        
+                # Convert sensor type number to string representation
+                for name, config in FLOOR_SENSOR_CONFIG.items():
+                    if config['sensor_type'] == sensor_type:
+                        self._current_type = name
+                        break
+                
         except Exception as e:
             _LOGGER.error("Error updating floor sensor type: %s", e)
