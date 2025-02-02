@@ -8,41 +8,66 @@ _Custom component to read and write data from Ensto BLE thermostats._
 - Integration tested on Raspberry PI 4, Home Assistant OS 14.1, Supervisor 2024.12.3, Core 2025.1.4
 - Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description
 
-## Installation
-1. Open the directory (folder) for your HA configuration (where you find configuration.yaml).
-2. If you do not have a [custom_components folder](https://developers.home-assistant.io/docs/creating_integration_file_structure/#where-home-assistant-looks-for-integrations) there, create it.
-3. In the [custom_components folder](https://developers.home-assistant.io/docs/creating_integration_file_structure/#where-home-assistant-looks-for-integrations) create a new folder called hass_ensto_ble.
-4. Download all the files in this repository.
-5. Place the files you downloaded in the new directory (folder) you created.
+### Installation
+
+1. Navigate to your Home Assistant configuration directory (where `configuration.yaml` is located)
+2. Create a `custom_components` directory if it doesn't exist
+3. Create a directory called `hass_ensto_ble` inside `custom_components`
+4. Download all files from this repository
+5. Place the downloaded files in the `custom_components/hass_ensto_ble` directory
 6. Restart Home Assistant
-7. In the HA UI go to "Configuration" -> "Integrations" click "+" and search for "Hass Ensto BLE".
-8. The integration will automatically detect if there is an Ensto BLE thermostat in pairing mode
+7. Go to Settings > Devices & services > Add Integration
+8. Search for "Hass Ensto BLE"
+
+The integration will automatically scan for Ensto BLE thermostats in pairing mode.
+
+To put your thermostat in pairing mode:
+- Hold the BLE reset button for >0.5 seconds
+- The blue LED will start blinking when pairing mode is active
 
 ## Supported functions
 ### Naming the Ensto BLE thermostat
-1. Navigate to "Developer Tools" -> "Actions"
-2. Select "Hass Ensto BLE: Set device name"
-3. Write a new name for the device into the Name field. Note: maximum of 25 characters.
-4. The device name will show in the "Integration entries" page in "Settings" -> "Devices & services" when you click the integration name
+
+1. Navigate to Developer Tools > Services
+2. Select service `hass_ensto_ble.set_device_name`
+3. Enter a new name in the Name field (maximum 25 characters)
+4. Click "CALL SERVICE"
+
+The new name will be visible:
+- In the Devices & services > Integrations page
+- In all entity names for this device
+- In the device card when you click on the device
+
+The name is stored directly in the thermostat's memory and persists through restarts.
 
 ### Setting Ensto BLE thermostat heating mode
-1. Navigate to "Settings" -> "Devices & services" and click on the device
+1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Select a mode from the drop down menu. Note! All Ensto BLE thermostats do not support all modes.
 
 ### Enable boost mode on the Ensto BLE thermostat
-1. Navigate to "Settings" -> "Devices & services" and click on the device
+1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Set Boost duration in minutes
 3. Set Boost temperature offset in Celsius
 4. Enable "Ensto Boost Mode"
 5. Sensor "Ensto Boost Remaining" will start counting from set boost time to zero and turn off automatically.
 
 ### Enable adaptive temperature control on the Ensto BLE thermostat
-1. Navigate to "Settings" -> "Devices & services" and click on the device
+1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Enable "Ensto Adaptive Temperature Control". Note! This is a simple switch to enable/disable adaptive temperature change on the device.
 
 ### Change the floor sensor type
-1. Navigate to "Settings" -> "Devices & services" and click on the device
+1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Change the Floor sensor type from the drop down menu
 3. After a while, the thermostat will return a new temperature value based on the new floor sensor type
 
+### Set the device time
+1. Home Assistant shows a notification if the device time differs more than one minute from Home Assistant time
+2. To synchronize the time:
+   - Go to Developer Tools > Services
+   - Select service `hass_ensto_ble.set_device_time`
+   - Select your thermostat's DateTime entity
+   - Click "CALL SERVICE"
+3. Navigate to Settings > Devices & services > [Your thermostat]
+4. Verify that the DateTime sensor shows the correct time
 
+The notification will automatically disappear once the time is synchronized.
