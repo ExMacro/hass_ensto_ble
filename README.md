@@ -40,18 +40,18 @@ The new name will be visible:
 
 The name is stored directly in the thermostat's memory and persists through restarts.
 
-### Setting Ensto BLE thermostat heating mode
+### Setting heating mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Select a mode from the drop down menu. Note! All Ensto BLE thermostats do not support all modes.
 
-### Enable boost mode on the Ensto BLE thermostat
+### Enable boost mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Set Boost duration in minutes
 3. Set Boost temperature offset in Celsius
 4. Enable "Ensto Boost Mode"
 5. Sensor "Ensto Boost Remaining" will start counting from set boost time to zero and turn off automatically.
 
-### Enable adaptive temperature control on the Ensto BLE thermostat
+### Enable adaptive temperature control
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Enable "Ensto Adaptive Temperature Control". Note! This is a simple switch to enable/disable adaptive temperature change on the device.
 
@@ -71,3 +71,9 @@ The name is stored directly in the thermostat's memory and persists through rest
 4. Verify that the DateTime sensor shows the correct time
 
 The notification will automatically disappear once the time is synchronized.
+
+### Setting Daylight saving
+
+1. Navigate to Settings > Integrations > [Your Ensto thermostat] > Entities
+2. Find the Daylight Saving switch
+4. Turn the switch on or off as needed
