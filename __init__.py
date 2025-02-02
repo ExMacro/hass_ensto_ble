@@ -24,6 +24,7 @@ PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT, Platform.NUMBER]
 
 # Set device name service
 SERVICE_SET_NAME = "set_device_name"
+SERVICE_SET_TIME = "set_device_time"
 SERVICE_SET_NAME_SCHEMA = vol.Schema({
     vol.Required("name"): str,
 })
@@ -58,12 +59,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # Force update device info
                 async_dispatcher_send(hass, f"{DOMAIN}_update")
 
+        async def set_device_time(call: ServiceCall) -> None:
+            """Set device time to match Home Assistant time."""
+            current_time = datetime.now()
+            if await manager.write_date_and_time(
+                current_time.year,
+                current_time.month,
+                current_time.day,
+                current_time.hour,
+                current_time.minute,
+                current_time.second
+            ):
+                # Force update device info
+                async_dispatcher_send(hass, f"{DOMAIN}_update")
+
         # Register services
         hass.services.async_register(
             DOMAIN,
             SERVICE_SET_NAME,
             set_device_name,
             schema=SERVICE_SET_NAME_SCHEMA,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_TIME,
+            set_device_time,
         )
 
         # Set up the platforms
@@ -87,5 +107,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Remove the services
     hass.services.async_remove(DOMAIN, SERVICE_SET_NAME)
+    hass.services.async_remove(DOMAIN, SERVICE_SET_TIME)
 
     return unload_ok

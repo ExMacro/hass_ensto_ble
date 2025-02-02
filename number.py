@@ -1,6 +1,5 @@
 """Support for Ensto BLE number controls."""
 import logging
-from typing import Optional
 
 from homeassistant.components.number import (
    NumberEntity,

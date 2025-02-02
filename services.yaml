@@ -9,3 +9,11 @@ set_device_name:
       example: "Test Thermostat"
       selector:
         text:
+
+set_device_time:
+  name: Set device time
+  description: Set Ensto device time to match Home Assistant time
+  target:
+    entity:
+      integration: hass_ensto_ble
+      domain: sensor

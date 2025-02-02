@@ -1,18 +1,13 @@
 """Support for Ensto BLE devices."""
 import logging
 import asyncio
-# import json
-# import os
-from typing import Dict, Optional
-# import subprocess
+from typing import Optional
 from bleak import BleakClient
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 from homeassistant.components import bluetooth
-# import aiofiles
 from homeassistant.core import HomeAssistant
 from .storage_manager import EnstoStorageManager
-# import datetime
 
 from .const import (
     MANUFACTURER_ID,
@@ -831,7 +826,7 @@ class EnstoThermostatManager:
             ])
 
             # Write to device
-            await self.client.write_gatt_char(DATE_AND_TIME_UUID, data)
+            await self.client.write_gatt_char(DATE_AND_TIME_UUID, data, response=True)
             
             return True
 

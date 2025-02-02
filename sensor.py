@@ -1,5 +1,6 @@
 """Support for Ensto BLE sensors."""
 import logging
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -14,9 +15,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
-
 from .base_entity import EnstoBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ async def async_setup_entry(
             EnstoNumberSensor(manager, "boost_setpoint"),
             EnstoNumberSensor(manager, "boost_remaining"),
             EnstoNumberSensor(manager, "alarm"),
+            EnstoDateTimeSensor(manager),
         ])
 
         # Add floor sensor only if value exists and is non-zero
@@ -200,3 +202,57 @@ class EnstoNumberSensor(EnstoBaseSensor):
                 return None
 
         return self._attr_native_value  # Default behavior for other number sensors
+
+class EnstoDateTimeSensor(EnstoBaseSensor):
+    """DateTime sensor for Ensto thermostat."""
+    
+    def __init__(self, manager):
+        """Initialize the sensor."""
+        super().__init__(manager, "datetime")
+        # Set the name using device name if available, otherwise use MAC address
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} DateTime"
+        # Create a unique ID for the sensor using MAC address
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_datetime"
+        # Don't use TIMESTAMP device class as we want to show actual device time
+        self._attr_native_value = None
+        # Track if alert is currently shown
+        self._alert_shown = False
+
+    async def async_update(self) -> None:
+            """Fetch new state data for the sensor."""
+            try:
+                # Get current date and time from the device
+                data = await self._manager.read_date_and_time()
+                if data:
+                    # Create datetime object from device data with timezone
+                    device_time = dt_util.as_local(datetime(
+                        data['year'], data['month'], data['day'],
+                        data['hour'], data['minute'], data['second']
+                    ))
+                    
+                    # Format time string for display
+                    self._attr_native_value = f"{data['day']}.{data['month']}.{data['year']} {data['hour']}:{data['minute']:02d}:{data['second']:02d}"
+                    
+                    # Get HA time in local timezone and calculate difference
+                    ha_time = dt_util.now()
+                    time_diff = abs(ha_time - device_time)
+                    
+                    # Show notification if time difference is more than 1 minute
+                    if time_diff > timedelta(minutes=1):
+                        if not self._alert_shown:
+                            await self.hass.services.async_call(
+                                "persistent_notification",
+                                "create",
+                                {
+                                    "title": "Time Mismatch Detected",
+                                    "message": f"Device time ({self._attr_native_value}) differs from Home Assistant time ({ha_time.strftime('%-d.%-m.%Y %-H:%M:%S')}). Use the Update Device Time service to synchronize.",
+                                    "notification_id": f"ensto_time_{self._manager.mac_address}"
+                                }
+                            )
+                            self._alert_shown = True
+                    else:
+                        # Reset alert flag if times are in sync
+                        self._alert_shown = False
+                        
+            except Exception as e:
+                _LOGGER.error("Error updating datetime: %s", e)
