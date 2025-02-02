@@ -22,6 +22,7 @@ async def async_setup_entry(
     switches = [
         EnstoBoostSwitch(manager),
         EnstoAdaptiveTempSwitch(manager),
+        EnstoDaylightSavingSwitch(manager),
     ]
     async_add_entities(switches, True)
 
@@ -123,3 +124,41 @@ class EnstoAdaptiveTempSwitch(EnstoBaseEntity, SwitchEntity):
                 self._is_on = result['enabled']
         except Exception as e:
             _LOGGER.error("Error updating adaptive temperature control state: %s", e)
+
+class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
+    """Representation of Ensto Daylight Saving switch."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the switch."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Daylight Saving"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_daylight_saving_switch"
+        self._is_on = False
+        self._additional_info = None
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if daylight saving is enabled."""
+        return self._is_on
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Enable daylight saving."""
+        await self._manager.write_daylight_saving(True)
+        self._is_on = True
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Disable daylight saving."""
+        await self._manager.write_daylight_saving(False)
+        self._is_on = False
+
+    async def async_update(self) -> None:
+        """Update daylight saving state."""
+        try:
+            result = await self._manager.read_daylight_saving()
+            if result:
+                self._is_on = result['enabled']
+                self._additional_info = result
+        except Exception as e:
+            _LOGGER.error("Error updating daylight saving state: %s", e)

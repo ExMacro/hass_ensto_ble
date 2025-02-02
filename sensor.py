@@ -231,7 +231,7 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
                     ))
                     
                     # Format time string for display
-                    self._attr_native_value = f"{data['day']}.{data['month']}.{data['year']} {data['hour']}:{data['minute']:02d}:{data['second']:02d}"
+                    self._attr_native_value = f"{data['day']}.{data['month']}.{data['year']} {data['hour']}.{data['minute']:02d}"
                     
                     # Get HA time in local timezone and calculate difference
                     ha_time = dt_util.now()

@@ -833,3 +833,72 @@ class EnstoThermostatManager:
         except Exception as e:
             _LOGGER.error("Failed to write date and time to device: %s", e)
             return False
+
+    async def read_daylight_saving(self) -> dict:
+        """Read daylight saving configuration from device."""
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return None
+
+            # Read raw data from device
+            data = await self.client.read_gatt_char(DAYLIGHT_SAVING_UUID)
+
+            # Parse data
+            enabled = bool(data[0])
+            # bytes 2-3: winter->summer offset (signed int16)
+            winter_to_summer = int.from_bytes(data[2:4], byteorder='little', signed=True)
+            # bytes 4-5: summer->winter offset (signed int16)
+            summer_to_winter = int.from_bytes(data[4:6], byteorder='little', signed=True)
+            # bytes 6-7: timezone offset in minutes (signed int16)
+            timezone_offset = int.from_bytes(data[6:8], byteorder='little', signed=True)
+
+            return {
+                'enabled': enabled,
+                'winter_to_summer_offset': winter_to_summer,
+                'summer_to_winter_offset': summer_to_winter,
+                'timezone_offset': timezone_offset
+            }
+
+        except Exception as e:
+            _LOGGER.error("Failed to read daylight saving config: %s", e)
+            return None
+
+    async def write_daylight_saving(self, enabled: bool,
+                                  winter_to_summer: int = 1,
+                                  summer_to_winter: int = 1,
+                                  timezone_offset: int = 60) -> bool:
+        """Write daylight saving configuration to device.
+        
+        Note: While the Ensto BLE protocol supports complex DST configuration with separate
+        winter/summer time offsets and timezone settings (see protocol specification
+        chapter 2.2.3), this implementation follows Ensto's official iOS app approach
+        with a simple on/off toggle. The unused offset bytes are set to 0.
+        
+        Args:
+            enabled: Enable/disable daylight saving
+        """
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return False
+
+            data = bytearray(8)
+            data[0] = 1 if enabled else 0  # Enable/disable flag
+            data[1] = 0  # Reserved byte
+            
+            # Winter->summer offset
+            data[2:4] = winter_to_summer.to_bytes(2, byteorder='little', signed=True)
+            
+            # Summer->winter offset
+            data[4:6] = summer_to_winter.to_bytes(2, byteorder='little', signed=True)
+            
+            # Timezone offset
+            data[6:8] = timezone_offset.to_bytes(2, byteorder='little', signed=True)
+
+            await self.client.write_gatt_char(DAYLIGHT_SAVING_UUID, data, response=True)
+            return True
+
+        except Exception as e:
+            _LOGGER.error("Failed to write daylight saving config: %s", e)
+            return False
