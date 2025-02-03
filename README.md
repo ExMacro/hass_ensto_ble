@@ -62,13 +62,15 @@ The name is stored directly in the thermostat's memory and persists through rest
 
 ### Set the device time
 1. Home Assistant shows a notification if the device time differs more than one minute from Home Assistant time
-2. To synchronize the time:
+2. Time is handled internally in UTC to ensure consistent operation across time zones
+3. To synchronize the time:
    - Go to Developer Tools > Services
    - Select service `hass_ensto_ble.set_device_time`
    - Select your thermostat's DateTime entity
    - Click "CALL SERVICE"
-3. Navigate to Settings > Devices & services > [Your thermostat]
-4. Verify that the DateTime sensor shows the correct time
+4. Navigate to Settings > Devices & services > [Your thermostat]
+5. Verify that the DateTime sensor shows the correct local time
+6. The notification will automatically disappear once the time is synchronized
 
 The notification will automatically disappear once the time is synchronized.
 
@@ -77,3 +79,4 @@ The notification will automatically disappear once the time is synchronized.
 1. Navigate to Settings > Integrations > [Your Ensto thermostat] > Entities
 2. Find the Daylight Saving switch
 4. Turn the switch on or off as needed
+   - The device will automatically convert between UTC and local time based on this setting
