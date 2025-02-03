@@ -8,6 +8,8 @@ from bleak_retry_connector import establish_connection, BleakClientWithServiceCa
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from .storage_manager import EnstoStorageManager
+from datetime import datetime
+from homeassistant.util import dt as dt_util
 
 from .const import (
     MANUFACTURER_ID,
@@ -744,8 +746,17 @@ class EnstoThermostatManager:
             raise
 
     async def read_date_and_time(self) -> dict:
-        """Read date and time from device.
-        NOT USED YET
+        """Read date and time from device in UTC.
+
+        Returns:
+            dict: UTC time components with keys:
+                year (int): Full year (e.g. 2024)
+                month (int): Month (1-12)
+                day (int): Day of month (1-31) 
+                hour (int): Hour (0-23)
+                minute (int): Minute (0-59)
+                second (int): Second (0-59)
+            None: If read fails
         """
         try:
             if not self.client or not self.client.is_connected:
@@ -783,7 +794,25 @@ class EnstoThermostatManager:
 
     async def write_date_and_time(self, year: int, month: int, day: int, hour: int, minute: int, second: int) -> bool:
         """Write date and time to device.
-        NOT USED YET
+        
+        All time values must be in UTC as the device internally operates in UTC time 
+        and handles DST/timezone conversions based on its settings.
+        
+        Args:
+            year: UTC year (0-9999)
+            month: UTC month (1-12)
+            day: UTC day (1-31)
+            hour: UTC hour (0-23)
+            minute: UTC minute (0-59)
+            second: UTC second (0-59)
+            
+        Returns:
+            bool: True if successful, False if failed
+            
+        Note:
+            Device specification 2.2.1: MCU operates in UTC, data collection is 
+            maintained with UTC timestamps. All timestamps must be in UTC regardless 
+            of the device's timezone settings.
         """
         try:
             if not self.client or not self.client.is_connected:
@@ -792,29 +821,38 @@ class EnstoThermostatManager:
 
             # Validate input values
             if not (0 <= year <= 9999):
-                _LOGGER.error(f"Invalid year: {year}")
+                _LOGGER.error(f"Invalid UTC year: {year}")
                 return False
             if not (1 <= month <= 12):
-                _LOGGER.error(f"Invalid month: {month}")
+                _LOGGER.error(f"Invalid UTC month: {month}")
                 return False
             if not (1 <= day <= 31):
-                _LOGGER.error(f"Invalid day: {day}")
+                _LOGGER.error(f"Invalid UTC day: {day}")
                 return False
             if not (0 <= hour <= 23):
-                _LOGGER.error(f"Invalid hour: {hour}")
+                _LOGGER.error(f"Invalid UTC hour: {hour}")
                 return False
             if not (0 <= minute <= 59):
-                _LOGGER.error(f"Invalid minute: {minute}")
+                _LOGGER.error(f"Invalid UTC minute: {minute}")
                 return False
             if not (0 <= second <= 59):
-                _LOGGER.error(f"Invalid second: {second}")
+                _LOGGER.error(f"Invalid UTC second: {second}")
                 return False
 
-            # Construct byte array for writing
-            # Year as 2 bytes in little-endian order
+            # Log UTC time being written
+            _LOGGER.debug(
+                "Writing UTC time to device: %04d-%02d-%02d %02d:%02d:%02d",
+                year, month, day, hour, minute, second
+            )
+
+            # Construct byte array according to device spec 2.2.2:
+            # BYTE[0-1]: year as uint16_t
+            # BYTE[2]: month 1-12
+            # BYTE[3]: date 1-31
+            # BYTE[4]: hour 0-23
+            # BYTE[5]: minute 0-59
+            # BYTE[6]: second 0-59
             year_bytes = year.to_bytes(2, byteorder="little")
-            
-            # Prepare data to write
             data = bytearray([
                 year_bytes[0],    # First byte of year
                 year_bytes[1],    # Second byte of year
@@ -827,15 +865,23 @@ class EnstoThermostatManager:
 
             # Write to device
             await self.client.write_gatt_char(DATE_AND_TIME_UUID, data, response=True)
-            
             return True
 
         except Exception as e:
-            _LOGGER.error("Failed to write date and time to device: %s", e)
+            _LOGGER.error("Failed to write UTC time to device: %s", e)
             return False
 
     async def read_daylight_saving(self) -> dict:
-        """Read daylight saving configuration from device."""
+        """Read daylight saving configuration from device.
+        
+        Returns:
+            dict: Configuration with keys:
+                enabled (bool): DST enabled/disabled
+                winter_to_summer_offset (int): Offset in minutes for winter->summer transition
+                summer_to_winter_offset (int): Offset in minutes for summer->winter transition
+                timezone_offset (int): Base timezone offset in minutes from UTC
+            None: If read fails
+        """
         try:
             if not self.client or not self.client.is_connected:
                 _LOGGER.error("Device not connected.")
@@ -864,19 +910,29 @@ class EnstoThermostatManager:
             _LOGGER.error("Failed to read daylight saving config: %s", e)
             return None
 
-    async def write_daylight_saving(self, enabled: bool,
-                                  winter_to_summer: int = 1,
-                                  summer_to_winter: int = 1,
-                                  timezone_offset: int = 60) -> bool:
+    async def write_daylight_saving(
+        self,
+        enabled: bool,
+        winter_to_summer: int,
+        summer_to_winter: int,
+        timezone_offset: int
+    ) -> bool:
         """Write daylight saving configuration to device.
         
-        Note: While the Ensto BLE protocol supports complex DST configuration with separate
-        winter/summer time offsets and timezone settings (see protocol specification
-        chapter 2.2.3), this implementation follows Ensto's official iOS app approach
-        with a simple on/off toggle. The unused offset bytes are set to 0.
+        According to protocol specification (chapter 2.2.3), device needs proper timezone
+        and DST settings to handle local time display correctly.
         
         Args:
             enabled: Enable/disable daylight saving
+            winter_to_summer: Offset in minutes for winter to summer transition (default 60 = 1h)
+            summer_to_winter: Offset in minutes for summer to winter transition (default 60 = 1h)
+            timezone_offset: Base timezone offset in minutes (default 120 = UTC+2 for Finland)
+            
+        Note: 
+            For Finland (EET/EEST):
+            - timezone_offset should be 120 (UTC+2)
+            - DST changes are 1h (60 minutes)
+            - Device adds the DST offset automatically when enabled
         """
         try:
             if not self.client or not self.client.is_connected:
@@ -887,16 +943,20 @@ class EnstoThermostatManager:
             data[0] = 1 if enabled else 0  # Enable/disable flag
             data[1] = 0  # Reserved byte
             
-            # Winter->summer offset
+            # Winter->summer offset (1h = 60 minutes)
             data[2:4] = winter_to_summer.to_bytes(2, byteorder='little', signed=True)
             
-            # Summer->winter offset
+            # Summer->winter offset (1h = 60 minutes)
             data[4:6] = summer_to_winter.to_bytes(2, byteorder='little', signed=True)
             
-            # Timezone offset
+            # Timezone offset (UTC+2 = 120 minutes for Finland)
             data[6:8] = timezone_offset.to_bytes(2, byteorder='little', signed=True)
 
             await self.client.write_gatt_char(DAYLIGHT_SAVING_UUID, data, response=True)
+            _LOGGER.debug(
+                "Wrote DST config - enabled: %s, winter->summer: %d min, summer->winter: %d min, timezone: %d min",
+                enabled, winter_to_summer, summer_to_winter, timezone_offset
+            )
             return True
 
         except Exception as e:

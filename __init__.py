@@ -10,6 +10,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -61,15 +62,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         async def set_device_time(call: ServiceCall) -> None:
             """Set device time to match Home Assistant time."""
-            current_time = datetime.now()
+            # Get current UTC time
+            utc_now = dt_util.utcnow()
+
+            # Get timezone info from HA
+            ha_tz = dt_util.DEFAULT_TIME_ZONE
+            _LOGGER.debug("Home Assistant timezone: %s", ha_tz)
+
+            # Calculate timezone offset in minutes
+            tz_offset = int(ha_tz.utcoffset(utc_now).total_seconds() / 60)
+            _LOGGER.debug("Timezone offset in minutes: %d", tz_offset)
+
+            # Read current DST settings before updating
+            current_dst_settings = await manager.read_daylight_saving()
+            dst_enabled = current_dst_settings.get('enabled', False) if current_dst_settings else False
+
+            # Write UTC time to device
             if await manager.write_date_and_time(
-                current_time.year,
-                current_time.month,
-                current_time.day,
-                current_time.hour,
-                current_time.minute,
-                current_time.second
+                utc_now.year,
+                utc_now.month,
+                utc_now.day,
+                utc_now.hour,
+                utc_now.minute,
+                utc_now.second
             ):
+                # Configure timezone and DST offsets (standard 60min offset)
+                await manager.write_daylight_saving(
+                    enabled=dst_enabled,  # Use the current state of the switch
+                    winter_to_summer=60,
+                    summer_to_winter=60,
+                    timezone_offset=tz_offset
+                )
+                
                 # Force update device info
                 async_dispatcher_send(hass, f"{DOMAIN}_update")
 

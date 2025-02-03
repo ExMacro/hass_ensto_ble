@@ -5,6 +5,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.util import dt as dt_util
 
 from .base_entity import EnstoBaseEntity
 from .const import DOMAIN, SCAN_INTERVAL
@@ -144,13 +145,31 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
         return self._is_on
 
     async def async_turn_on(self, **kwargs) -> None:
-        """Enable daylight saving."""
-        await self._manager.write_daylight_saving(True)
+        """Turn daylight saving on."""
+        # Get timezone info from HA
+        ha_tz = dt_util.DEFAULT_TIME_ZONE
+        tz_offset = int(ha_tz.utcoffset(dt_util.utcnow()).total_seconds() / 60)
+
+        await self._manager.write_daylight_saving(
+            enabled=True,
+            winter_to_summer=60,  # Standard 1h DST change
+            summer_to_winter=60,  # Standard 1h DST change
+            timezone_offset=tz_offset
+        )
         self._is_on = True
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Disable daylight saving."""
-        await self._manager.write_daylight_saving(False)
+        """Turn daylight saving off."""
+        # Get timezone info from HA
+        ha_tz = dt_util.DEFAULT_TIME_ZONE
+        tz_offset = int(ha_tz.utcoffset(dt_util.utcnow()).total_seconds() / 60)
+
+        await self._manager.write_daylight_saving(
+            enabled=False,
+            winter_to_summer=60,  # Standard 1h DST change
+            summer_to_winter=60,  # Standard 1h DST change
+            timezone_offset=tz_offset
+        )
         self._is_on = False
 
     async def async_update(self) -> None:
