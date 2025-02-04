@@ -80,3 +80,11 @@ The notification will automatically disappear once the time is synchronized.
 2. Find the Daylight Saving switch
 4. Turn the switch on or off as needed
    - The device will automatically convert between UTC and local time based on this setting
+
+### Setting Floor Temperature Limits
+1. Navigate to Settings > Integrations > [Your Ensto thermostat] > Entities
+2. Find the Floor Min and Max Temperature
+3. Adjust as needed
+   - The minimum temperature must always be at least 8 degrees lower than the maximum limit
+   - These settings are only used in combination heating mode
+   - In other heating modes, the sensors will be disabled
