@@ -26,6 +26,8 @@ async def async_setup_entry(
    entities = [
        EnstoBoostDurationNumber(manager),
        EnstoBoostOffsetNumber(manager),
+       EnstoFloorLimitNumber(manager, "low"),
+       EnstoFloorLimitNumber(manager, "high")
    ]
    async_add_entities(entities, True)
 
@@ -109,3 +111,69 @@ class EnstoBoostOffsetNumber(EnstoBaseEntity, NumberEntity):
                self._attr_native_value = settings['offset_degrees']
        except Exception as e:
            _LOGGER.error("Error updating boost temperature offset: %s", e)
+
+class EnstoFloorLimitNumber(EnstoBaseEntity, NumberEntity):
+    """Control floor temperature limits.
+
+    This entity controls the minimum and maximum floor temperature limits
+    for combination heating mode. The limits are only available when
+    heating mode is set to combination (mode 3).
+    """
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager, limit_type):
+        """Initialize the number control."""
+        super().__init__(manager)
+        self._limit_type = limit_type
+        self._attr_device_class = NumberDeviceClass.TEMPERATURE
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_native_step = 0.5
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._attr_entity_registry_enabled_default = True
+        self._current_mode = None
+        
+        # Set limits based on type
+        if limit_type == "low":
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Temperature Min"
+            self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_temp_min"
+            self._attr_native_min_value = 5  # Minimum allowed
+            self._attr_native_max_value = 42  # Must be 8 degrees less than absolute max 50
+        else:
+            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Temperature Max"
+            self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_temp_max"
+            self._attr_native_min_value = 13  # Must be 8 degrees more than absolute min 5
+            self._attr_native_max_value = 50  # Maximum allowed
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+        
+        The entity is only available in combination heating mode (mode 3).
+        """
+        return self._current_mode == 3  # Only show Floor Min / Max in "Combination" heating mode
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new value."""
+        try:
+            limits = await self._manager.read_floor_limits()
+            if limits:
+                if self._limit_type == "low":
+                    await self._manager.write_floor_limits(value, limits['high_value'])
+                else:
+                    await self._manager.write_floor_limits(limits['low_value'], value)
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set floor temperature limit: %s", e)
+
+    async def async_update(self) -> None:
+            try:
+                mode_result = await self._manager.read_heating_mode()
+                if mode_result:
+                    self._current_mode = mode_result['mode_number']
+                    
+                limits = await self._manager.read_floor_limits()
+                if limits:
+                    self._attr_native_value = limits['low_value' if self._limit_type == "low" else 'high_value']
+            except Exception as e:
+                _LOGGER.error("Error updating: %s", e)
