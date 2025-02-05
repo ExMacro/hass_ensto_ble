@@ -45,6 +45,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = manager
 
+        # Read device information
+        manager.sw_version = await manager.read_software_revision()
+        manager.hw_version = await manager.read_hardware_revision()
+
         # Update config entry title with current info
         title = f"{manager.model_number or 'Unknown Model'} {manager.device_name or entry.data['mac_address']}"
         hass.config_entries.async_update_entry(entry, title=title)

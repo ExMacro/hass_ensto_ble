@@ -1075,3 +1075,27 @@ class EnstoThermostatManager:
         except Exception as e:
             _LOGGER.error("Failed to write room sensor calibration: %s", e)
             return False
+
+    async def read_software_revision(self) -> Optional[str]:
+        """Read software revision string."""
+        try:
+            if not self.client or not self.client.is_connected:
+                return None
+            data = await self.client.read_gatt_char(SOFTWARE_REVISION_UUID)
+            # Parse format: app;ble;bootloader
+            return data.decode('utf-8')
+        except Exception as e:
+            _LOGGER.error("Failed to read software revision: %s", e)
+            return None
+
+    async def read_hardware_revision(self) -> Optional[str]:
+        """Read hardware revision."""
+        try:
+            if not self.client or not self.client.is_connected:
+                return None
+            data = await self.client.read_gatt_char(HARDWARE_REVISION_UUID)
+            hw_version = int.from_bytes(data[0:4], byteorder='little')
+            return str(hw_version)
+        except Exception as e:
+            _LOGGER.error("Failed to read hardware revision: %s", e)
+            return None

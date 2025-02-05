@@ -16,13 +16,25 @@ class EnstoBaseEntity(Entity):
         Returns a dictionary containing:
         - unique_id: MAC address as the device identifier
         - name: device name or default name with MAC
-        - manufacturer: fixed valua "Ensto"
+        - manufacturer: fixed value "Ensto"
         - model: model number if available
+        - sw_version: software version if available
+        - hw_version: hardware version if available
         """
         name = self._manager.device_name or f"Ensto Thermostat {self._manager.mac_address}"
-        return {
+        
+        # Basic info that's always included
+        info = {
             "identifiers": {(DOMAIN, self._manager.mac_address)},
             "name": name,
             "manufacturer": "Ensto",
             "model": self._manager.model_number or "model name not available",
         }
+        
+        # Add version info if available
+        if hasattr(self._manager, "sw_version"):
+            info["sw_version"] = self._manager.sw_version
+        if hasattr(self._manager, "hw_version"):
+            info["hw_version"] = self._manager.hw_version
+            
+        return info
