@@ -88,3 +88,10 @@ The notification will automatically disappear once the time is synchronized.
    - The minimum temperature must always be at least 8 degrees lower than the maximum limit
    - These settings are only used in combination heating mode
    - In other heating modes, the sensors will be disabled
+
+### Setting Room Sensor Calibration value
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the Room Sensor Calibration number entity
+3. Set a value between -5.0°C and +5.0°C to calibrate the room temperature sensor
+   - Positive values increase the displayed temperature
+   - Negative values decrease the displayed temperature
