@@ -27,7 +27,8 @@ async def async_setup_entry(
        EnstoBoostDurationNumber(manager),
        EnstoBoostOffsetNumber(manager),
        EnstoFloorLimitNumber(manager, "low"),
-       EnstoFloorLimitNumber(manager, "high")
+       EnstoFloorLimitNumber(manager, "high"),
+       EnstoRoomSensorCalibrationNumber(manager),
    ]
    async_add_entities(entities, True)
 
@@ -177,3 +178,39 @@ class EnstoFloorLimitNumber(EnstoBaseEntity, NumberEntity):
                     self._attr_native_value = limits['low_value' if self._limit_type == "low" else 'high_value']
             except Exception as e:
                 _LOGGER.error("Error updating: %s", e)
+
+class EnstoRoomSensorCalibrationNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for room sensor calibration."""
+
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Room Sensor Calibration"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_room_sensor_calibration"
+        self._attr_native_min_value = -5.0
+        self._attr_native_max_value = 5.0
+        self._attr_native_step = 0.1
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = NumberDeviceClass.TEMPERATURE
+        self._attr_mode = "box"
+        self._attr_native_value = None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update room sensor calibration value."""
+        try:
+            success = await self._manager.write_room_sensor_calibration(value)
+            if success:
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set room sensor calibration: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            result = await self._manager.read_room_sensor_calibration()
+            if result:
+                self._attr_native_value = result['calibration_value']
+        except Exception as e:
+            _LOGGER.error("Error updating room sensor calibration: %s", e)

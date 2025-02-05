@@ -1031,3 +1031,47 @@ class EnstoThermostatManager:
         except Exception as e:
             _LOGGER.error("Failed to write floor limits: %s", e)
             return False
+
+    async def read_room_sensor_calibration(self) -> dict:
+        """Read room sensor calibration value."""
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return None
+                
+            data = await self.client.read_gatt_char(CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID)
+            raw_value = int.from_bytes(data[0:2], byteorder='little', signed=True)
+            calibration_value = round(raw_value / 10, 1)
+            
+            return {
+                'calibration_value': calibration_value
+            }
+                
+        except Exception as e:
+            _LOGGER.error("Failed to read room sensor calibration: %s", e)
+            return None
+
+    async def write_room_sensor_calibration(self, value: float) -> bool:
+        """Write room sensor calibration value."""
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return False
+                
+            if not (-5.0 <= value <= 5.0):
+                raise ValueError("Calibration value must be between -5.0 and +5.0 °C")
+                
+            raw_value = int(value * 10)
+            data = raw_value.to_bytes(2, byteorder='little', signed=True)
+            
+            await self.client.write_gatt_char(
+                CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID,
+                data,
+                response=True
+            )
+            
+            return True
+                
+        except Exception as e:
+            _LOGGER.error("Failed to write room sensor calibration: %s", e)
+            return False
