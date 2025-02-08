@@ -16,21 +16,28 @@ from .const import DOMAIN, SCAN_INTERVAL
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
-   hass: HomeAssistant,
-   entry: ConfigEntry,
-   async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
-   """Set up numbers from config entry."""
-   manager = hass.data[DOMAIN][entry.entry_id]
-   
-   entities = [
-       EnstoBoostDurationNumber(manager),
-       EnstoBoostOffsetNumber(manager),
-       EnstoFloorLimitNumber(manager, "low"),
-       EnstoFloorLimitNumber(manager, "high"),
-       EnstoRoomSensorCalibrationNumber(manager),
-   ]
-   async_add_entities(entities, True)
+    """Set up numbers from config entry."""
+    manager = hass.data[DOMAIN][entry.entry_id]
+    
+    entities = [
+        EnstoBoostDurationNumber(manager),
+        EnstoBoostOffsetNumber(manager),
+        EnstoRoomSensorCalibrationNumber(manager),
+    ]
+
+    # Add floor limit numbers only for ECO16 models
+    model = manager.model_number if manager.model_number else ""
+    if "ECO16" in model:
+        entities.extend([
+            EnstoFloorLimitNumber(manager, "low"),
+            EnstoFloorLimitNumber(manager, "high"),
+        ])
+
+    async_add_entities(entities, True)
 
 class EnstoBoostDurationNumber(EnstoBaseEntity, NumberEntity):
    """Number entity for controlling boost duration."""

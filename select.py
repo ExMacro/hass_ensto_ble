@@ -8,7 +8,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL, FLOOR_SENSOR_TYPE_UUID, FLOOR_SENSOR_CONFIG
+from .const import (
+    DOMAIN, SCAN_INTERVAL, FLOOR_SENSOR_TYPE_UUID,
+    FLOOR_SENSOR_CONFIG, HEATING_MODES_ECO16, HEATING_MODES_ELTE6
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,17 +30,21 @@ MODE_MAP_REVERSE = {v: k for k, v in MODE_MAP.items()}
 FLOOR_SENSOR_TYPES = {v['sensor_type']: k for k, v in FLOOR_SENSOR_CONFIG.items()}
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # Home Assistant instance
-    entry: ConfigEntry,   # Config entry containing device info like MAC
-    async_add_entities: AddEntitiesCallback  # Callback to register entities
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up selects from a config entry."""
     manager = hass.data[DOMAIN][entry.entry_id]
-
-    selects = [
-        EnstoHeatingModeSelect(manager),
-        EnstoFloorSensorSelect(manager),
-    ]
+    
+    # Always add heating mode select
+    selects = [EnstoHeatingModeSelect(manager)]
+    
+    # Add floor sensor select only for ECO16 models
+    model = manager.model_number if manager.model_number else ""
+    if "ECO16" in model:
+        selects.append(EnstoFloorSensorSelect(manager))
+    
     async_add_entities(selects, True)
 
 class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
@@ -70,7 +77,14 @@ class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
     def options(self) -> list[str]:
         """Return list of available heating modes."""
         if self._available_modes is None:
-            return list(MODE_MAP.keys())
+            # Check device model
+            model = self._manager.model_number if self._manager.model_number else ""
+            # Convert mode numbers to display names using existing mapping
+            if "ELTE6" in model:
+                self._available_modes = [MODE_MAP_REVERSE[num] for num in HEATING_MODES_ELTE6.keys()]
+            else:
+                self._available_modes = [MODE_MAP_REVERSE[num] for num in HEATING_MODES_ECO16.keys()]
+                
         return self._available_modes
 
     async def async_select_option(self, option: str) -> None:
@@ -92,13 +106,6 @@ class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
                 mode_number = result['mode_number']
                 if mode_number in MODE_MAP_REVERSE:
                     self._current_mode = MODE_MAP_REVERSE[mode_number]
-                
-                # Update available modes based on device type
-                if result['device_type'] == 'ELTE6':
-                    self._available_modes = ["Room", "Power", "Force Control"]
-                else:  # ECO16 or unknown
-                    self._available_modes = list(MODE_MAP.keys())
-                    
         except Exception as e:
             _LOGGER.error("Error updating heating mode: %s", e)
 
