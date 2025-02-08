@@ -106,7 +106,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN,
             SERVICE_SET_NAME,
             set_device_name,
-            schema=SERVICE_SET_NAME_SCHEMA,
         )
         hass.services.async_register(
             DOMAIN,
