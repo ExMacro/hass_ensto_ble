@@ -16,7 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
+from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, SIGNAL_DATETIME_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -215,6 +215,31 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
         self._attr_native_value = None
         # Track if alert is currently shown
         self._alert_shown = False
+
+    async def async_added_to_hass(self) -> None:
+            """Subscribe to updates."""
+            async def _update_immediately(*args):
+                """Force immediate update."""
+                await self.async_update()
+                self.async_write_ha_state()
+
+            # Subscribe to general updates
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    SIGNAL_ENSTO_UPDATE.format(self._manager.mac_address),
+                    _update_immediately
+                )
+            )
+            
+            # Subscribe to datetime specific updates
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address),
+                    _update_immediately
+                )
+            )
 
     async def async_update(self) -> None:
         """Fetch new state data for the sensor.

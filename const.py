@@ -23,6 +23,8 @@ DEFAULT_BOOST_PERCENTAGE = 0  # Power boost percentage
 # Used with async_dispatcher_send to notify entities of state changes
 SIGNAL_ENSTO_UPDATE = "ensto_update_{}"  # Format with device ID or MAC
 
+SIGNAL_DATETIME_UPDATE = "ensto_datetime_update_{}"
+
 # Device specific constants
 MANUFACTURER_ID = 0x2806  # Ensto manufacturer ID (big endian)
 
