@@ -43,7 +43,9 @@ The name is stored directly in the thermostat's memory and persists through rest
 
 ### Setting heating mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Select a mode from the drop down menu. Note! All Ensto BLE thermostats do not support all modes.
+2. Select a mode from the drop down menu.
+
+Note! All Ensto BLE thermostats do not support all modes.
 
 ### Enable boost mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
