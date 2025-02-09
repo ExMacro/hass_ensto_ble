@@ -4,20 +4,8 @@ from datetime import timedelta
 # Domain identifier for Home Assistant
 DOMAIN = "hass_ensto_ble"
 
-# Scan interval in seconds for the sensor.py, select.py and switch.py
-SCAN_INTERVAL = timedelta(seconds=15)
-
-# Available heating control modes for the thermostat
-MODE_FLOOR = "Floor"                   # Control based on floor temperature
-MODE_ROOM = "Room"                     # Control based on room temperature
-MODE_COMBINATION = "Combination"       # Control using both floor and room temperatures
-MODE_POWER = "Power"                   # Direct power control mode
-MODE_FORCE_CONTROL = "Force Control"   # Override normal temperature control
-
-# Default configuration values for boost functionality
-DEFAULT_BOOST_DURATION = 60   # Duration in minutes
-DEFAULT_BOOST_OFFSET = 3      # Temperature offset in degrees
-DEFAULT_BOOST_PERCENTAGE = 0  # Power boost percentage
+# Scan interval in seconds for the number.py, sensor.py, select.py and switch.py
+SCAN_INTERVAL = timedelta(seconds=30)
 
 # Signal identifier format for device updates
 # Used with async_dispatcher_send to notify entities of state changes
@@ -54,19 +42,17 @@ ACTIVE_MODES = {
 }
 
 # Heating modes for different device models
-HEATING_MODES_ECO16 = {
-    1: "Floor",
-    2: "Room",
-    3: "Combination",
-    4: "Power",
-    5: "Force Control"
+MODE_MAP = {
+    1: "Floor",        # Floor sensor based heating (ECO16 only)
+    2: "Room",         # Room sensor based heating
+    3: "Combination",  # Combined floor and room (ECO16 only)
+    4: "Power",        # Direct power control
+    5: "Force Control" # Manual control mode
 }
 
-HEATING_MODES_ELTE6 = {
-    2: "Room",
-    4: "Power",
-    5: "Force Control"
-}
+# Define supported modes per device model using mode numbers for direct lookup
+SUPPORTED_MODES_ECO16 = {1, 2, 3, 4, 5}
+SUPPORTED_MODES_ELTE6 = {2, 4, 5}
 
 # Floor sensor types (only the ones in Ensto app) and parameter values (as written to device by Ensto app)
 FLOOR_SENSOR_CONFIG = {

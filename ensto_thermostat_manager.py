@@ -16,8 +16,7 @@ from .const import (
     ERROR_CODES_BYTE0,
     ERROR_CODES_BYTE1,
     ACTIVE_MODES,
-    HEATING_MODES_ECO16,
-    HEATING_MODES_ELTE6,
+    MODE_MAP,
     MANUFACTURER_NAME_UUID,
     DEVICE_NAME_UUID,
     MODEL_NUMBER_UUID,
@@ -279,7 +278,7 @@ class EnstoThermostatManager:
             active_mode = ACTIVE_MODES.get(data[12], "Unknown")
 
             # Active heating mode
-            heating_mode = HEATING_MODES_ECO16.get(data[13], "Unknown")
+            heating_mode = MODE_MAP.get(data[13], "Unknown")
 
             # Boost settings
             boost_enabled = bool(data[14])
@@ -546,19 +545,11 @@ class EnstoThermostatManager:
 
             # Get mode number from first byte
             mode_number = data[0]
-
-            # Determine device type and mode name based on mode number
-            if mode_number in HEATING_MODES_ECO16:
-                mode_name = HEATING_MODES_ECO16[mode_number]
-                device_type = "ECO16" if mode_number in [1, 3] else "Unknown"
-            elif mode_number in HEATING_MODES_ELTE6:
-                mode_name = HEATING_MODES_ELTE6[mode_number]
-                device_type = "ELTE6"
+            mode_name = MODE_MAP.get(mode_number, "Unknown")
 
             return {
                 'mode_number': mode_number,
-                'mode_name': mode_name,
-                'device_type': device_type
+                'mode_name': mode_name
             }
 
         except Exception as e:
@@ -572,12 +563,8 @@ class EnstoThermostatManager:
                 _LOGGER.error("Device not connected.")
                 return False
 
-            # Define valid modes
-            eco16_modes = {1, 2, 3, 4, 5}  # Valid modes for ECO16
-            elte6_modes = {2, 4, 5}        # Valid modes for ELTE6
-
             # Validate input mode
-            if mode not in eco16_modes and mode not in elte6_modes:
+            if mode not in MODE_MAP:
                 raise ValueError(
                     "Invalid mode. Must be: "
                     "1 (Floor), 2 (Room), 3 (Combination), "
