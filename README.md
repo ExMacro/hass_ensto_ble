@@ -22,6 +22,8 @@ _Custom component to read and write data from Ensto BLE thermostats._
 
 The integration will automatically scan for Ensto BLE thermostats in pairing mode.
 
+During installation, you must choose a currency for energy calculations (only stored in the thermostat)
+
 To put your thermostat in pairing mode:
 - Hold the BLE reset button for >0.5 seconds
 - The blue LED will start blinking when pairing mode is active
@@ -98,3 +100,25 @@ The notification will automatically disappear once the time is synchronized.
 3. Set a value between -5.0°C and +5.0°C to calibrate the room temperature sensor
    - Positive values increase the displayed temperature
    - Negative values decrease the displayed temperature
+
+### Setting Heating Power
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the Heating Power entity
+3. Adjust the power level
+
+Changes are stored in the thermostat's memory
+
+### Configuring Floor Area
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the Floor Area entity
+3. Set the floor area
+
+Changes are stored in the thermostat's memory
+
+### Comprehensive Energy Monitoring
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the power usage sensor. It includes the following information as attributes:
+   - Last 24 hour thermostat on/off ratio tracking
+   - Last 7-day thermostat on/off ratio tracking
+   - Last 12-month thermostat on/off ratio tracking
+   - Hourly floor and room temperature readings
