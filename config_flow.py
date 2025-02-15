@@ -9,10 +9,14 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import DOMAIN
+from .const import DOMAIN, CURRENCY_MAP
 from .ensto_thermostat_manager import EnstoThermostatManager
 
 _LOGGER = logging.getLogger(__name__)
+
+# CONF_CURRENCY = "currency"
+CONF_CURRENCY = "Please select a currency for energy cost calculations"
+DEFAULT_CURRENCY = 1  # EUR
 
 class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Ensto BLE."""
@@ -36,30 +40,11 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._mac_address = user_input["Please select an Ensto BLE device in pairing mode"]
             
-            # Initialize manager and get device info
-            self._manager = EnstoThermostatManager(self.hass, self._mac_address)
-            self._manager.setup()
-            
-            # Try to connect and authenticate the device
-            if not await self._manager.connect_and_verify():
-                return self.async_abort(
-                    reason="Connection and authentication with the device failed. Please try again."
-                )
-            
-            # Create config entry with device info
-            model = self._manager.model_number or "Unknown Model"
-            name = self._manager.device_name or self._mac_address
-            title = f"{model} {name}"
-            
-            return self.async_create_entry(
-                title=title,
-                data={
-                    "mac_address": self._mac_address,
-                }
-            )
+            # Move to currency selection step
+            return await self.async_step_currency()
 
         # Initialize manager for device scanning
-        manager = EnstoThermostatManager(self.hass, "")  # Empty MAC for scanning mode
+        manager = EnstoThermostatManager(self.hass, "")
         manager.setup()
         
         # Scan for devices that are in pairing mode
@@ -70,7 +55,6 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 reason="No Ensto BLE devices in pairing mode. Hold BLE reset button for >0.5 seconds. Blue LED will blink."
             )
 
-        # Create a mapping of MAC addresses to device names for the selection form
         self._discovered_devices = {
             addr: f"{device.name} ({addr})"
             for addr, (device, _) in pairing_devices.items()
@@ -82,10 +66,45 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required("Please select an Ensto BLE device in pairing mode"): vol.In(self._discovered_devices)
                 }
-            ),
-            description_placeholders={
-                "devices_found": "\n".join(
-                    f"- {name}" for name in self._discovered_devices.values()
+            )
+        )
+
+    async def async_step_currency(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle currency selection."""
+        if user_input is not None:
+            # Initialize manager and get device info
+            self._manager = EnstoThermostatManager(self.hass, self._mac_address)
+            self._manager.setup()
+            
+            # Try to connect and authenticate the device
+            if not await self._manager.connect_and_verify():
+                return self.async_abort(
+                    reason="Connection and authentication with the device failed. Please try again."
                 )
-            }
+            
+            # Create config entry with device info and currency
+            model = self._manager.model_number or "Unknown Model"
+            name = self._manager.device_name or self._mac_address
+            title = f"{model} {name}"
+            
+            return self.async_create_entry(
+                title=title,
+                data={
+                    "mac_address": self._mac_address,
+                    CONF_CURRENCY: user_input[CONF_CURRENCY],
+                }
+            )
+
+        # Show currency selection form
+        currency_options = {code: name for code, name in CURRENCY_MAP.items()}
+
+        return self.async_show_form(
+            step_id="currency",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_CURRENCY, default=DEFAULT_CURRENCY): vol.In(currency_options)
+                }
+            )
         )

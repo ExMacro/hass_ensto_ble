@@ -8,7 +8,9 @@ from bleak_retry_connector import establish_connection, BleakClientWithServiceCa
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from .storage_manager import EnstoStorageManager
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+from calendar import monthrange
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -17,6 +19,8 @@ from .const import (
     ERROR_CODES_BYTE1,
     ACTIVE_MODES,
     MODE_MAP,
+    CURRENCY_MAP,
+    CURRENCY_SYMBOLS,
     MANUFACTURER_NAME_UUID,
     DEVICE_NAME_UUID,
     MODEL_NUMBER_UUID,
@@ -1085,4 +1089,391 @@ class EnstoThermostatManager:
             return str(hw_version)
         except Exception as e:
             _LOGGER.error("Failed to read hardware revision: %s", e)
+            return None
+
+    async def read_heating_power(self) -> dict:
+        """Read custom heating power configuration from device.
+        
+        Returns:
+            dict with keys:
+                heating_power (int): Heating power in Watts (range 0-9999)
+        """
+
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return None
+
+            # Read raw data from device
+            data = await self.client.read_gatt_char(HEATING_POWER_UUID)
+            
+            heating_power = int.from_bytes(data[0:2], byteorder='little')
+
+            return {
+                'heating_power': heating_power
+            }
+        except Exception as e:
+            _LOGGER.error("Failed to read custom heating power value: %s", e)
+            return None
+
+    async def write_heating_power(self, value: int) -> bool:
+        """Write custom heating power configuration to device.
+        
+        Args:
+            value (int): Heating power in Watts (range 0-9999)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+
+        if not (0 <= value <= 9999):
+            _LOGGER.error("Heating power value must be between 0 and 9999")
+            return False
+
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return False
+                
+            data = value.to_bytes(2, byteorder='little')
+            
+            await self.client.write_gatt_char(HEATING_POWER_UUID, data, response=True)
+
+            return True
+
+        except Exception as e:
+            _LOGGER.error("Failed to write custom heating power value: %s", e)
+            return False
+
+    async def read_floor_area(self) -> dict:
+        """Read custom floor area configuration from device.
+        
+        Returns:
+            dict with keys:
+                floor_area (int): Floor area in square meters (m²)
+        """
+            
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return None
+
+            # Read raw data from device
+            data = await self.client.read_gatt_char(FLOOR_AREA_UUID)
+            
+            floor_area = int.from_bytes(data[0:2], byteorder='little')
+
+            return {
+                'floor_area': floor_area
+            }
+        except Exception as e:
+            _LOGGER.error("Failed to read custom floor area value: %s", e)
+            return None
+
+    async def write_floor_area(self, value: int) -> bool:
+        """Write custom floor area configuration to device.
+        
+        Args:
+            value (int): Floor area in square meters (m²)
+            
+        Returns:
+            bool: True if successful, False otherwise
+            
+        Note:
+            Maximum value is 65535 due to uint16_t limitation
+        """
+
+        if not (0 <= value <= 65535):
+            _LOGGER.error("Floor area value must be between 0 and 65535 for uint16_t")
+            return False
+
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return False
+                
+            data = value.to_bytes(2, byteorder='little')
+            
+            await self.client.write_gatt_char(FLOOR_AREA_UUID, data, response=True)
+
+            return True
+
+        except Exception as e:
+            _LOGGER.error("Failed to write custom floor area value: %s", e)
+            return False
+
+    async def read_energy_unit(self) -> dict:
+        """Read energy unit configuration from device.
+        
+        Returns:
+            dict with keys:
+                currency_code (int): Currency code number
+                currency_name (str): Currency name (e.g. "EUR")
+                currency_symbol (str): Currency symbol (e.g. "€") 
+                price (float): Price per kWh
+                
+        Example return value:
+            {
+                'currency_code': 1,
+                'currency_name': 'EUR',
+                'currency_symbol': '€',
+                'price': 12.34
+            }
+        """
+
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return None
+
+            # Read raw data from device
+            data = await self.client.read_gatt_char(ENERGY_UNIT_UUID)
+            
+            # Parse currency (first byte)
+            currency = data[0]
+            
+            # Parse price (bytes 2-3 as unsigned int16, scaled by 100)
+            price_raw = int.from_bytes(data[2:4], byteorder='little')
+            price = price_raw / 100.0
+
+            # Default to EUR (1) if currency code is invalid
+            if currency not in CURRENCY_MAP:
+                _LOGGER.warning(f"Received invalid currency code: {currency}. Defaulting to EUR.")
+                currency = 1
+
+            return {
+                'currency_code': currency,
+                'currency_name': CURRENCY_MAP.get(currency, "Unknown"),
+                'currency_symbol': CURRENCY_SYMBOLS.get(currency, ""),
+                'price': price
+            }
+        except Exception as e:
+            _LOGGER.error("Failed to read energy unit configuration: %s", e)
+            return None
+
+    async def write_energy_unit(self, currency: int, price: float) -> bool:
+        """Write energy unit configuration to device."""
+
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
+                return False
+
+            # If no currency provided or invalid, default to EUR (1)
+            if currency not in CURRENCY_MAP:
+                _LOGGER.warning(f"Invalid currency code: {currency}. Defaulting to EUR.")
+                currency = 1
+
+            # Validate inputs using CURRENCY_MAP keys
+            if currency not in CURRENCY_MAP:
+                _LOGGER.error(f"Invalid currency code: {currency}")
+                return False
+            
+            if not (0 <= price <= 655.35):
+                _LOGGER.error(f"Price must be between 0 and 655.35: {price}")
+                return False
+
+            # Prepare data packet
+            data = bytearray(4)
+            data[0] = currency  # Currency code
+            data[1] = 0  # Unused byte
+
+            # Convert price to integer scaled by 100
+            price_raw = int(price * 100)
+            data[2:4] = price_raw.to_bytes(2, byteorder='little')
+
+            # Write to device
+            await self.client.write_gatt_char(ENERGY_UNIT_UUID, data, response=True)
+            
+            _LOGGER.debug(
+                "Wrote energy unit config - Currency: %s (%d), Price: %.2f",
+                CURRENCY_MAP.get(currency, "Unknown"), currency, price
+            )
+            return True
+
+        except Exception as e:
+            _LOGGER.error("Failed to write energy unit configuration: %s", e)
+            return False
+
+    async def read_power_consumption(self) -> dict:
+        """Read real time power consumption data.
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'timestamp': datetime object of the header timestamp
+                - 'measurements': List of dicts with:
+                    - 'timestamp': datetime of the measurement
+                    - 'ratio': Power consumption ratio (0-100%)
+        """
+        try:
+            data = await self.read_split_characteristic(REAL_TIME_INDICATION_POWER_CONSUMPTION_UUID)
+            
+            if not data:
+                _LOGGER.debug("No data received from device")
+                return None
+            
+            if len(data) < 4:
+                _LOGGER.error("Data too short, expected at least 4 bytes for header")
+                return None
+
+            # Parse header timestamp
+            hour = data[0]  # uint8 hour
+            day = data[1]   # uint8 day
+            month = data[2] # uint8 month
+            year = data[3]  # uint8 year (0-255)
+
+            measurements = []
+
+            # Process measurement pairs (delta hour and ratio)
+            for i in range(24):  # 25 hours of data
+                offset = 4 + i * 2  # Start after header, 2 bytes per measurement
+                delta_hours = data[offset]
+                ratio = data[offset + 1]
+                
+                # Skip invalid values (0xff)
+                if ratio == 0xff:
+                    continue
+                    
+                # Calculate timestamp for this measurement
+                timestamp = datetime(2000 + year, month, day, hour, tzinfo=dt_util.UTC) - timedelta(hours=delta_hours)
+                
+                measurements.append({
+                    'timestamp': timestamp,
+                    'ratio': ratio
+                })
+            
+            return {
+                'timestamp': timestamp,
+                'measurements': measurements
+            }
+            
+        except Exception as e:
+            _LOGGER.error("Error reading power consumption: %s", e)
+            return None
+
+    async def read_monitoring_data(self) -> Optional[dict]:
+        """Read monitoring data from device which contains power and temperature history.
+        
+        Returns:
+            dict containing:
+                - daily_power: List of last 7 days power consumption data
+                - monthly_power: List of last 12 months power consumption data
+                - temperature_history: List of hourly temperature readings for past week
+            None if read fails
+        """
+        try:
+            data = await self.read_split_characteristic(MONITORING_DATA_UUID)
+            if not data:
+                _LOGGER.debug("No monitoring data received from device")
+                return None
+            
+            result = {
+                'daily_power': [],
+                'monthly_power': [],
+                'temperature_history': []
+            }
+
+            # Current position in data array
+            pos = 0
+
+            # Parse daily power data (7 days)
+            # Daily data starts from beginning of the data buffer (pos = 0)
+            # Header: day(1) + month(1) + year(1) = 3 bytes
+            # Data per day: delta_day(1) + ratio(1) = 2 bytes
+            if len(data) >= pos + 3:
+                day = data[pos]
+                month = data[pos + 1]
+                year = data[pos + 2]
+                pos += 3
+
+                # Process 7 days of power data
+                for _ in range(7):
+                    if len(data) >= pos + 2:
+                        delta_days = data[pos]
+                        ratio_raw = data[pos + 1]
+                        
+                        timestamp = datetime(2000 + year, month, day, tzinfo=dt_util.UTC) - timedelta(days=delta_days)
+                        
+                        # Convert raw value to ratio, using None for unset values (0xff)
+                        ratio = None if ratio_raw == 0xff else ratio_raw
+
+                        # Store the values in result
+                        result['daily_power'].append({
+                            'time': timestamp.isoformat(),
+                            'ratio': ratio
+                        })
+                        pos += 2
+
+            # Parse last 12 month power data
+            # Offset calculation: daily data uses 19 bytes, so monthly starts at 19
+            if len(data) >= 19:  # Need at least daily data section length before monthly
+               pos = 19  # Skip daily data section (3 bytes header + 7 * 2 bytes data = 19)
+               
+               # Header: month(1) + year(1) = 2 bytes
+               # Data per month: delta_month(1) + ratio(1) = 2 bytes
+               if len(data) >= pos + 2:
+                   month = data[pos]
+                   year = data[pos + 1]
+                   pos += 2
+
+                   # Process 12 months of power data
+                   for _ in range(12):
+                       if len(data) >= pos + 2:
+                           delta_months = data[pos]
+                           ratio_raw = data[pos + 1]
+
+                           # Calculate timestamp using relativedelta for accurate month subtraction
+                           timestamp = datetime(2000 + year, month, 1, tzinfo=dt_util.UTC) - relativedelta(months=delta_months)
+                           
+                           # Convert raw value to ratio, using None for unset values (0xff)
+                           ratio = None if ratio_raw == 0xff else ratio_raw
+
+                           # Store the values in result
+                           result['monthly_power'].append({
+                               'time': timestamp.isoformat(),
+                               'ratio': ratio
+                           })
+                           pos += 2
+
+            # Parse temperature history (24 hours * 7 days)
+            if len(data) >= 47:  # 19 (daily) + 28 (monthly) bytes minimum before temperature data
+               pos = 47  # Skip daily (19) and monthly (28) data sections
+               
+               # Header: hour(1) + day(1) + month(1) + year(1) = 4 bytes
+               if len(data) >= pos + 4:
+                   hour = data[pos]
+                   day = data[pos + 1]
+                   month = data[pos + 2]
+                   year = data[pos + 3]
+                   pos += 4
+
+                   # Process 168 hours (24*7) of temperature data
+                   # Data per hour: delta_hour(1) + floor_temp(2) + room_temp(2) = 5 bytes
+                   for _ in range(168):
+                       if len(data) >= pos + 5:
+                           delta_hours = data[pos]
+                           
+                           # Get raw temperature values from bytes
+                           floor_temp_raw = int.from_bytes(data[pos+1:pos+3], byteorder='little', signed=True)
+                           room_temp_raw = int.from_bytes(data[pos+3:pos+5], byteorder='little', signed=True)
+
+                           # Calculate timestamp for this measurement
+                           timestamp = datetime(2000 + year, month, min(max(1, day), 28), hour, tzinfo=dt_util.UTC) - timedelta(hours=delta_hours)
+
+                           # Convert raw values to temperatures, using None for unset values (0x7fff)
+                           floor_temp = None if floor_temp_raw == 0x7fff else floor_temp_raw / 10
+                           room_temp = None if room_temp_raw == 0x7fff else room_temp_raw / 10
+                           
+                           # Store the values in result
+                           result['temperature_history'].append({
+                               'time': timestamp.isoformat(),
+                               'floor_temp': floor_temp,
+                               'room_temp': room_temp,
+                           })
+                           pos += 5
+
+            return result
+
+        except Exception as e:
+            _LOGGER.error("Error reading monitoring data: %s", e)
             return None

@@ -8,10 +8,12 @@ from homeassistant.components.number import (
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import DOMAIN, SCAN_INTERVAL, CURRENCY_MAP, CURRENCY_SYMBOLS
+from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,10 +25,16 @@ async def async_setup_entry(
     """Set up numbers from config entry."""
     manager = hass.data[DOMAIN][entry.entry_id]
     
+    # Get currency from config entry
+    currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+    
     entities = [
         EnstoBoostDurationNumber(manager),
         EnstoBoostOffsetNumber(manager),
         EnstoRoomSensorCalibrationNumber(manager),
+        EnstoHeatingPowerNumber(manager),
+        EnstoFloorAreaNumber(manager),
+        EnstoEnergyUnitPriceNumber(manager, currency),
     ]
 
     # Add floor limit numbers only for ECO16 models
@@ -221,3 +229,127 @@ class EnstoRoomSensorCalibrationNumber(EnstoBaseEntity, NumberEntity):
                 self._attr_native_value = result['calibration_value']
         except Exception as e:
             _LOGGER.error("Error updating room sensor calibration: %s", e)
+
+class EnstoHeatingPowerNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for controlling heating power."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        # Set a descriptive name using device name or MAC address
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Heating Power"
+        # Create a unique identifier for this entity
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_heating_power"
+        
+        # Set value constraints for heating power
+        self._attr_native_min_value = 0
+        self._attr_native_max_value = 9999
+        self._attr_native_step = 1
+        self._attr_native_unit_of_measurement = "W"  # Watts
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._attr_device_class = NumberDeviceClass.POWER
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the heating power value."""
+        try:
+            # Convert float to integer as heating power is an integer
+            success = await self._manager.write_heating_power(int(value))
+            if success:
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set custom heating power: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            result = await self._manager.read_heating_power()
+            if result:
+                self._attr_native_value = result['heating_power']
+        except Exception as e:
+            _LOGGER.error("Error updating custom heating power: %s", e)
+
+class EnstoFloorAreaNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for controlling floor area."""
+
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        # Set a descriptive name using device name or MAC address
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Area"
+        # Create a unique identifier for this entity
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_area"
+        
+        # Set value constraints for floor area
+        self._attr_native_min_value = 0
+        self._attr_native_max_value = 65535  # Maximum uint16_t value
+        self._attr_native_step = 1
+        self._attr_native_unit_of_measurement = "m²"  # Square meters
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._attr_device_class = NumberDeviceClass.AREA
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the floor area value."""
+        try:
+            # Convert float to integer as floor area is an integer
+            success = await self._manager.write_floor_area(int(value))
+            if success:
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set custom floor area: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            result = await self._manager.read_floor_area()
+            if result:
+                self._attr_native_value = result['floor_area']
+        except Exception as e:
+            _LOGGER.error("Error updating custom floor area: %s", e)
+
+class EnstoEnergyUnitPriceNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for controlling energy unit price."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager, currency: int):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Energy Unit Price"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_energy_unit_price"
+        self._attr_native_min_value = 0
+        self._attr_native_max_value = 655.35
+        self._attr_native_step = 0.01
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        
+        # Use currency from config flow
+        self._currency = currency
+        self._attr_entity_category = EntityCategory.CONFIG
+        
+        # Use currency symbol from config flow
+        self._attr_native_unit_of_measurement = f"{CURRENCY_SYMBOLS[currency]}/kWh"
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the energy unit price value."""
+        try:
+            success = await self._manager.write_energy_unit(self._currency, value)
+            if success:
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set energy unit price: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            result = await self._manager.read_energy_unit()
+            if result:
+                self._attr_native_value = result['price']
+
+        except Exception as e:
+            _LOGGER.error("Error updating energy unit price: %s", e)

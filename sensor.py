@@ -94,6 +94,7 @@ async def async_setup_entry(
             EnstoNumberSensor(manager, "boost_remaining"),
             EnstoNumberSensor(manager, "alarm"),
             EnstoDateTimeSensor(manager),
+            EnstoPowerConsumptionSensor(manager),
         ])
 
         # Add floor sensor only if value exists and is non-zero
@@ -292,3 +293,53 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
                         
         except Exception as e:
             _LOGGER.error("Error updating datetime: %s", e)
+
+class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
+    """Sensor for monitoring power consumption."""
+
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the sensor."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Power Usage"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_power_usage"
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_device_class = SensorDeviceClass.POWER_FACTOR
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {
+            "last_24h": [],
+            "last_7_days": [],
+            "last_12_months": [],
+            "temperature_history": []
+        }
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the sensor."""
+        try:
+            # Get real-time power consumption
+            result = await self._manager.read_power_consumption()
+            if result and result['measurements']:
+                # Set latest value as the main state
+                current = result['measurements'][0]  # First measurement is newest
+                self._attr_native_value = current['ratio']
+                
+                # Update last 24h history
+                self._attr_extra_state_attributes["last_24h"] = [
+                    {
+                        "time": m['timestamp'].isoformat(),
+                        "ratio": m['ratio']
+                    }
+                    for m in result['measurements']
+                ]
+
+            # Get historical monitoring data
+            monitoring_data = await self._manager.read_monitoring_data()
+            if monitoring_data:
+                self._attr_extra_state_attributes["last_7_days"] = monitoring_data['daily_power']
+                self._attr_extra_state_attributes["last_12_months"] = monitoring_data['monthly_power']
+                self._attr_extra_state_attributes["temperature_history"] = monitoring_data['temperature_history']
+
+        except Exception as e:
+            _LOGGER.error("Error updating power consumption sensor: %s", e)

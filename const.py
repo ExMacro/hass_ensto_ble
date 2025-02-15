@@ -103,6 +103,24 @@ FLOOR_SENSOR_CONFIG = {
     }
 }
 
+# Currency code mapping for energy unit
+CURRENCY_MAP = {
+    1: "EUR",  # Euro
+    2: "SEK",  # Swedish Krona
+    3: "NOK",  # Norwegian Krone
+    4: "RUB",  # Russian Ruble
+    5: "USD"   # United States Dollar
+}
+
+# Optional: Currency symbols for display purposes
+CURRENCY_SYMBOLS = {
+    1: "€",    # Euro
+    2: "kr",   # Swedish Krona
+    3: "kr",   # Norwegian Krone
+    4: "₽",    # Russian Ruble
+    5: "$"     # United States Dollar
+}
+
 # Device GATT service UUIDs
 # 2.1.1. Manufacturer name string
 MANUFACTURER_NAME_UUID = "00002a29-0000-1000-8000-00805f9b34fb"
@@ -477,8 +495,6 @@ REAL_TIME_INDICATION_UUID = "66ad3e6b-3135-4ada-bb2b-8b22916b21d4"
 REAL_TIME_INDICATION_POWER_CONSUMPTION_UUID = "c1686f28-fa1b-4791-9eca-35523fb3597e"
 """
 This is data to be advertised when client is idle – not sending/reading settings data of thermostat.
-Thermostat stores last 25 hours and last 7 days. Updates once/second. If values are not set they are
-0xff.This is data to be advertised when client is idle – not sending/reading settings data of thermostat.
 Thermostat stores last 25 hours and last 7 days. Updates once/second. If values are not set they are
 0xff.
 
