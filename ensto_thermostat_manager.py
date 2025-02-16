@@ -64,7 +64,6 @@ class EnstoThermostatManager:
         self.mac_address = mac_address
         self.client: Optional[BleakClient] = None
         self._connect_lock = asyncio.Lock()
-        self._is_connecting = False
         self.scanner = None
         self.storage_manager = EnstoStorageManager(hass)
         self.model_number = None
@@ -85,11 +84,7 @@ class EnstoThermostatManager:
 
     async def connect(self) -> None:
             """Establish connection to the device."""
-            async with self._connect_lock:
-                if self._is_connecting:
-                    return
-
-                self._is_connecting = True
+            if await self._connect_lock.acquire():
                 try:
                     if self.client and self.client.is_connected:
                         return
@@ -100,20 +95,52 @@ class EnstoThermostatManager:
                         raise Exception(f"Device {self.mac_address} not found")
 
                     _LOGGER.debug("Connecting to device %s", self.mac_address)
-                    self.client = await establish_connection(
-                        client_class=BleakClientWithServiceCache,
-                        device=device,
-                        name=self.mac_address,
-                        timeout=10.0
-                    )
+                    self.client = BleakClient(device)
+                    await self.client.connect(timeout=10.0)
                     _LOGGER.debug("Connected to device %s", self.mac_address)
+
+                    # always pair to set encryption
+                    _LOGGER.debug("Pairing with device %s", self.mac_address)
+                    await self.client.pair()
+                    _LOGGER.debug("Paired device %s", self.mac_address)
+
+                    # Check storage first
+                    stored_id = await self.read_device_info()
+                    
+                    if stored_id is None:
+                        # No stored ID, need to get factory_reset_id from device
+                        _LOGGER.info("No stored Factory Reset ID found, attempting pairing...")
+                            
+                        # Get Factory Reset ID from device 
+                        try:
+                            device_id = await self.read_factory_reset_id()
+                            if device_id:
+                                _LOGGER.info("Got Factory Reset ID from device")
+                                await self.write_device_info(self.mac_address, device_id)
+                                stored_id = device_id
+                            else:
+                                raise Exception("Could not get Factory Reset ID from device")
+                        except Exception as e:
+                            _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
+                            raise
+                    
+                    # Write Factory Reset ID to device
+                    await self.write_factory_reset_id(stored_id)
+                    
+                    # Read and store model number and device name after successful connection
+                    self.model_number = await self.read_model_number()
+                    self.device_name = await self.read_device_name()
+                    
+                    _LOGGER.info("Successfully verified Factory Reset ID and read model number")
 
                 except Exception as e:
                     _LOGGER.error("Failed to connect: %s", str(e))
                     self.client = None
                     raise
                 finally:
-                    self._is_connecting = False
+                    self._connect_lock.release()
+            else:
+                raise Exception("Already connecting")
 
     async def ensure_connection(self) -> None:
         """Ensure that we have a connection to the device."""
@@ -163,22 +190,19 @@ class EnstoThermostatManager:
     async def read_factory_reset_id(self) -> Optional[int]:
         """Read Factory Reset ID from the BLE device."""
         try:
-            await self.ensure_connection()
             data = await self.client.read_gatt_char(FACTORY_RESET_ID_UUID)
             factory_reset_id = int.from_bytes(data[:4], byteorder="little")
             return factory_reset_id
         except Exception as e:
-            _LOGGER.error("Failed to read factory reset ID: %s", e)
-            return None
+            raise Exception("Failed to read factory reset ID: %s", e)
 
     async def write_factory_reset_id(self, factory_reset_id: int) -> None:
         """Write the Factory Reset ID to the BLE device."""
         try:
-            await self.ensure_connection()
             id_bytes = factory_reset_id.to_bytes(4, byteorder="little")
             await self.client.write_gatt_char(FACTORY_RESET_ID_UUID, id_bytes)
         except Exception as e:
-            _LOGGER.error("Failed to write factory reset ID: %s", e)
+            raise Exception("Failed to write factory reset ID: %s", e)
 
     async def read_split_characteristic(self, characteristic_uuid: str) -> bytes:
         """
@@ -311,47 +335,6 @@ class EnstoThermostatManager:
             _LOGGER.error("Error parsing real time indication: %s", e)
             return {}
 
-    async def setup_bluetooth_pairing(self) -> bool:
-        """Execute bluetooth pairing."""
-        try:
-            async def run_bluetoothctl():
-                process = await asyncio.create_subprocess_exec(
-                    'bluetoothctl',
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE
-                )
-
-                commands = [
-                    f"remove {self.mac_address}",  # Remove old pairing if exists
-                    "scan on",                     # Start scanning
-                    "sleep 2",                     # Wait a moment
-                    f"pair {self.mac_address}",    # Pair
-                    "sleep 2",                     # Wait for pairing
-                    f"trust {self.mac_address}",   # Trust device
-                    f"connect {self.mac_address}", # Connect
-                    "scan off",                    # Stop scanning
-                    "quit"
-                ]
-
-                for cmd in commands:
-                    _LOGGER.debug("Executing bluetooth command: %s", cmd)
-                    if cmd.startswith("sleep"):
-                        await asyncio.sleep(int(cmd.split()[1]))
-                    else:
-                        if process.stdin:
-                            process.stdin.write(f"{cmd}\n".encode())
-                            await process.stdin.drain()
-
-                stdout, stderr = await process.communicate()
-                _LOGGER.debug("Bluetooth pairing output: %s", stdout.decode())
-                return b"Failed" not in stdout if stdout else False
-
-            return await run_bluetoothctl()
-
-        except Exception as e:
-            _LOGGER.error("Pairing error: %s", e)
-            return False
-
     async def read_model_number(self) -> Optional[str]:
         """Read model number via GATT characteristic."""
         try:
@@ -368,78 +351,6 @@ class EnstoThermostatManager:
         except Exception as e:
             _LOGGER.error("Failed to read model number: %s", e)
             return None
-
-    async def connect_and_verify(self) -> bool:
-        """Connect and verify the device.
-        Attempts to pair if no Factory Reset ID is found in storage."""
-        try:
-            # Find device from scanner first
-            ble_device = bluetooth.async_ble_device_from_address(self.hass, self.mac_address)
-            if not ble_device:
-                _LOGGER.error("Could not find BLE device")
-                return False
-
-            # Check storage first
-            stored_id = await self.read_device_info()
-            
-            if stored_id is None:
-                # No stored ID, need to pair and get factory_reset_id
-                _LOGGER.info("No stored Factory Reset ID found, attempting pairing...")
-                pairing_success = await self.setup_bluetooth_pairing()
-                
-                if not pairing_success:
-                    _LOGGER.error("Bluetooth pairing failed")
-                    return False
-                    
-                # Get Factory Reset ID from device after pairing
-                try:
-                    device_id = await self.read_factory_reset_id()
-                    if device_id:
-                        _LOGGER.info("Got Factory Reset ID from device after pairing")
-                        await self.write_device_info(self.mac_address, device_id)
-                        stored_id = device_id
-                    else:
-                        _LOGGER.error("Could not get Factory Reset ID from device")
-                        return False
-                except Exception as e:
-                    _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
-                    return False
-
-            await self.ensure_connection()
-            
-            # Write Factory Reset ID to device
-            id_bytes = stored_id.to_bytes(4, byteorder="little")
-            await self.client.write_gatt_char(FACTORY_RESET_ID_UUID, id_bytes)
-            
-            # Read and store model number and device name after successful connection
-            self.model_number = await self.read_model_number()
-            self.device_name = await self.read_device_name()
-            
-            _LOGGER.info("Successfully verified Factory Reset ID and read model number")
-            return True
-                
-        except Exception as e:
-            _LOGGER.error("Failed to verify Factory Reset ID: %s", e)
-            return False
-
-    async def check_if_paired(self) -> bool:
-        """Check if device is already paired using bluetoothctl."""
-        try:
-            process = await asyncio.create_subprocess_exec(
-                'bluetoothctl',
-                'info',
-                self.mac_address,
-                stdout=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await process.communicate()
-            output = stdout.decode()
-            
-            # Device is paired if "Paired: yes" appears in the output
-            return "Paired: yes" in output
-            
-        except Exception as e:
-            _LOGGER.error("Error checking pairing status: %s", e)
-            return False
 
     async def set_heating_mode(self, mode: int) -> None:
         """Set heating mode."""

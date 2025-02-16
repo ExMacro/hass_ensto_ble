@@ -40,8 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Setup scanner and verify connection
         manager.setup()
-        if not await manager.connect_and_verify():
-            raise ConfigEntryNotReady("Failed to verify device connection")
+        await manager.ensure_connection()
         
         # Store the manager instance
         hass.data.setdefault(DOMAIN, {})
