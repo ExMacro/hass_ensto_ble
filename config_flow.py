@@ -79,7 +79,9 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._manager.setup()
             
             # Try to connect and authenticate the device
-            if not await self._manager.connect_and_verify():
+            try: 
+                await self._manager.ensure_connection()
+            except Exception as e:
                 return self.async_abort(
                     reason="Connection and authentication with the device failed. Please try again."
                 )
