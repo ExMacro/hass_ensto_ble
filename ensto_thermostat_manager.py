@@ -178,10 +178,14 @@ class EnstoThermostatManager:
         pairing_devices = {}
         for addr, (discovery_info, adv) in ensto_devices.items():
             try:
-                fields = adv.manufacturer_data[MANUFACTURER_ID].decode('ascii').split(';')
+                service_info = bluetooth.async_last_service_info(self.hass, addr)
+                fields = service_info.manufacturer_data[MANUFACTURER_ID].decode('ascii').split(';')
                 if len(fields) >= 2 and fields[1] == "1":
                     _LOGGER.info(f"Device {discovery_info.name} address {discovery_info.address} is in pairing mode")
                     pairing_devices[addr] = (discovery_info, adv)
+                else:
+                    _LOGGER.debug(f"Device {discovery_info.name} address {discovery_info.address} is NOT in pairing mode")
+
             except Exception as e:
                 _LOGGER.error(f"Error parsing manufacturer data: %s", e)
                 
