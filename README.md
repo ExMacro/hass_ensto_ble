@@ -54,7 +54,7 @@ Boost power offset and vacation power offset are only used in the Power heating 
 ### Enable boost mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Set Boost duration in minutes
-3. Set Boost temperature offset in Celsius
+3. Set Boost temperature offset (-20C to 20C) or boost power offset (-100% to 100%) if you're using Power heating mode
 4. Enable "Ensto Boost Mode"
 5. Sensor "Ensto Boost Remaining" will start counting from set boost time to zero and turn off automatically.
 
