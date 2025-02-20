@@ -2,8 +2,7 @@
 _Custom component to read and write data from Ensto BLE thermostats._
 
 ## Note
-- This is an early development version. It's a hobby project and will be developed slowly for my own purposes. Please be patient.
-- Currently this integration supports some of the functionality of the official Ensto Heat app
+- This is a development version. It's a hobby project and will be developed slowly for my own purposes. Please be patient.
 - Integration tested on Raspberry PI 4, Home Assistant OS 14.2, Supervisor 2025.02.1, Core 2025.2.4
 - Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description
 - The version v0.1.9.1 onwards should have a basic support for multiple thermostats. However, the set_device_name-service doesn't yet support multiple thermostats.
@@ -47,7 +46,10 @@ The name is stored directly in the thermostat's memory and persists through rest
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Select a mode from the drop down menu.
 
-Note! All Ensto BLE thermostats do not support all modes.
+All Ensto BLE thermostats do not support all modes.
+
+Floor temperature min / max values are only used in the Combination heating mode.
+Boost power offset and vacation power offset are only used in the Power heating mode
 
 ### Enable boost mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
@@ -122,3 +124,11 @@ Changes are stored in the thermostat's memory
    - Last 7-day thermostat on/off ratio tracking
    - Last 12-month thermostat on/off ratio tracking
    - Hourly floor and room temperature readings
+
+### Setting Vacation Mode
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find and configure the vacation end times
+3. Configure the vacation temperature offset (-20C to 20C) or vacation power offset (-100% to 100%) if you're using Power heating mode
+4. Enable the vacation mode switch. The thermostat will turn on the vacation mode on and off when the vacation start and end times are reached.
+
+Temperature and power offset values and date settings will automatically update in the UI.
