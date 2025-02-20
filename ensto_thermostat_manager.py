@@ -389,7 +389,8 @@ class EnstoThermostatManager:
                 offset_degrees = offset_raw / 100.0
                 
                 # Parse percentage offset (byte 3)
-                offset_percentage = data[3]
+                # Convert percentage offset byte to signed int (range -128 to 127)
+                offset_percentage = int.from_bytes([data[3]], byteorder='little', signed=True)
                 
                 # Parse time setpoint (bytes 4-5 as unsigned int16)
                 setpoint_minutes = int.from_bytes(data[4:6], byteorder='little')
@@ -419,8 +420,8 @@ class EnstoThermostatManager:
             # Validate input values
             if not (0 <= offset_degrees <= 50):
                 raise ValueError("Temperature offset must be between 0 and 50 degrees")
-            if not (0 <= offset_percentage <= 100):
-                raise ValueError("Percentage offset must be between 0 and 100")
+            if not (-100 <= offset_percentage <= 100):
+                raise ValueError("Percentage offset must be between -100 and 100")
             if not (0 <= duration_minutes <= 65535):  # max value for uint16
                 raise ValueError("Duration must be between 0 and 65535 minutes")
 
@@ -436,7 +437,8 @@ class EnstoThermostatManager:
             data[1:3] = offset_raw.to_bytes(2, byteorder='little', signed=True)
             
             # Percentage offset
-            data[3] = offset_percentage
+            # Convert percentage offset to signed int8
+            data[3] = offset_percentage.to_bytes(1, byteorder='little', signed=True)[0]
             
             # Duration setpoint as unsigned int16
             data[4:6] = duration_minutes.to_bytes(2, byteorder='little')
