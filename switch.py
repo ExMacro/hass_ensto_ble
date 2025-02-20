@@ -4,11 +4,13 @@ import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import DOMAIN, SCAN_INTERVAL, SIGNAL_DATETIME_UPDATE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ async def async_setup_entry(
         EnstoBoostSwitch(manager),
         EnstoAdaptiveTempSwitch(manager),
         EnstoDaylightSavingSwitch(manager),
+        EnstoVacationModeSwitch(manager),
     ]
     async_add_entities(switches, True)
 
@@ -181,3 +184,87 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
                 self._additional_info = result
         except Exception as e:
             _LOGGER.error("Error updating daylight saving state: %s", e)
+
+class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
+    """Representation of Ensto Vacation Mode switch."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the switch."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Vacation Mode"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_vacation_mode_switch"
+        self._attr_icon = "mdi:palm-tree"
+        self._is_on = False
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if vacation mode is active."""
+        return self._is_on
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn vacation mode on."""
+        try:
+            settings = await self._manager.read_vacation_time()
+            if settings:
+                await self._manager.write_vacation_time(
+                    time_from=settings['time_from'],
+                    time_to=settings['time_to'],
+                    offset_temperature=settings['offset_temperature'],
+                    offset_percentage=settings['offset_percentage'],
+                    enabled=True
+                )
+                self._is_on = True
+                
+                # Notify datetime entities to update
+                async_dispatcher_send(
+                    self.hass,
+                    SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address)
+                )
+                
+        except Exception as e:
+            _LOGGER.error(f"Failed to enable vacation mode: {e}")
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn vacation mode off."""
+        try:
+            settings = await self._manager.read_vacation_time()
+            if settings:
+                await self._manager.write_vacation_time(
+                    time_from=settings['time_from'],
+                    time_to=settings['time_to'],
+                    offset_temperature=settings['offset_temperature'],
+                    offset_percentage=settings['offset_percentage'],
+                    enabled=False
+                )
+                self._is_on = False
+                
+                # Notify datetime entities to update
+                async_dispatcher_send(
+                    self.hass,
+                    SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address)
+                )
+                
+        except Exception as e:
+            _LOGGER.error(f"Failed to disable vacation mode: {e}")
+
+    async def async_update(self) -> None:
+        """Update vacation mode state."""
+        try:
+            settings = await self._manager.read_vacation_time()
+            if settings:
+                # Add debug logging here
+                local_from = dt_util.as_local(settings['time_from'])
+                local_to = dt_util.as_local(settings['time_to'])
+                _LOGGER.debug(
+                    "Vacation mode settings: raw=%s, from=%s, to=%s, active=%s",
+                    settings.get('raw_data', ''),
+                    local_from.strftime('%Y-%m-%d %H:%M:%S'),
+                    local_to.strftime('%Y-%m-%d %H:%M:%S'),
+                    settings.get('active', False)
+                )
+                
+                self._is_on = settings.get('enabled', False)
+        except Exception as e:
+            _LOGGER.error(f"Error updating vacation mode state: {e}")

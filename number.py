@@ -31,10 +31,13 @@ async def async_setup_entry(
     entities = [
         EnstoBoostDurationNumber(manager),
         EnstoBoostOffsetNumber(manager),
+        EnstoBoostPowerOffsetNumber(manager),
         EnstoRoomSensorCalibrationNumber(manager),
         EnstoHeatingPowerNumber(manager),
         EnstoFloorAreaNumber(manager),
         EnstoEnergyUnitPriceNumber(manager, currency),
+        EnstoVacationTempOffsetNumber(manager),
+        EnstoVacationPowerOffsetNumber(manager),
     ]
 
     # Add floor limit numbers only for ECO16 models
@@ -103,6 +106,15 @@ class EnstoBoostOffsetNumber(EnstoBaseEntity, NumberEntity):
        self._attr_device_class = NumberDeviceClass.TEMPERATURE
        self._attr_mode = "box"
        self._attr_native_value = None
+       self._current_mode = None
+
+   @property
+   def available(self) -> bool:
+       """Return if entity is available.
+       
+       Entity is available in all heating modes except Power mode (mode 4).
+       """
+       return self._current_mode != 4
 
    async def async_set_native_value(self, value: float) -> None:
        """Update the boost temperature offset."""
@@ -120,13 +132,79 @@ class EnstoBoostOffsetNumber(EnstoBaseEntity, NumberEntity):
            _LOGGER.error("Failed to set boost temperature offset: %s", e)
 
    async def async_update(self) -> None:
-       """Fetch new state data for the number."""
-       try:
-           settings = await self._manager.read_boost()
-           if settings:
-               self._attr_native_value = settings['offset_degrees']
-       except Exception as e:
-           _LOGGER.error("Error updating boost temperature offset: %s", e)
+      """Fetch new state data for the number."""
+      try:
+          mode_result = await self._manager.read_heating_mode()
+          if mode_result:
+              self._current_mode = mode_result['mode_number']
+          
+          settings = await self._manager.read_boost()
+          if settings:
+              self._attr_native_value = settings['offset_degrees']
+      except Exception as e:
+          _LOGGER.error("Error updating boost temperature offset: %s", e)
+
+class EnstoBoostPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for controlling boost power offset percentage.
+    
+    This entity is only visible when heating mode is set to Power (mode 4).
+    It allows adjusting boost power percentage from -100% to 100%.
+    """
+
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Power Offset"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_power_offset"
+        self._attr_native_min_value = -100
+        self._attr_native_max_value = 100
+        self._attr_native_step = 1
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._current_mode = None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+        
+        Entity is only available in Power heating mode (mode 4).
+        """
+        return self._current_mode == 4
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the boost power offset percentage.
+        
+        Reads current boost settings and updates only the power
+        offset while preserving other settings.
+        """
+        try:
+            settings = await self._manager.read_boost()
+            if settings:
+                await self._manager.write_boost(
+                    enabled=settings['enabled'],
+                    offset_degrees=settings['offset_degrees'],
+                    offset_percentage=int(value),
+                    duration_minutes=settings['setpoint_minutes']
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set boost power offset: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            mode_result = await self._manager.read_heating_mode()
+            if mode_result:
+                self._current_mode = mode_result['mode_number']
+            
+            settings = await self._manager.read_boost()
+            if settings:
+                self._attr_native_value = settings['offset_percentage']
+        except Exception as e:
+            _LOGGER.error("Error updating boost power offset: %s", e)
 
 class EnstoFloorLimitNumber(EnstoBaseEntity, NumberEntity):
     """Control floor temperature limits.
@@ -353,3 +431,122 @@ class EnstoEnergyUnitPriceNumber(EnstoBaseEntity, NumberEntity):
 
         except Exception as e:
             _LOGGER.error("Error updating energy unit price: %s", e)
+
+class EnstoVacationTempOffsetNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for vacation mode temperature offset in celsius."""
+
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Vacation Temperature Offset"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_vacation_temp_offset"
+        self._attr_native_min_value = -20.0
+        self._attr_native_max_value = 20.0
+        self._attr_native_step = 0.5
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = NumberDeviceClass.TEMPERATURE
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._current_mode = None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+        
+        Entity is available in all heating modes except Power mode (mode 4).
+        """
+        return self._current_mode != 4
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the vacation temperature offset value.
+        
+        Reads current vacation settings and updates only the temperature
+        offset while preserving other settings.
+        """
+        try:
+            settings = await self._manager.read_vacation_time()
+            if settings:
+                await self._manager.write_vacation_time(
+                    time_from=settings['time_from'],
+                    time_to=settings['time_to'],
+                    offset_temperature=value,
+                    offset_percentage=settings['offset_percentage'],
+                    enabled=settings['enabled']
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set vacation temperature offset: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            mode_result = await self._manager.read_heating_mode()
+            if mode_result:
+                self._current_mode = mode_result['mode_number']
+            
+            result = await self._manager.read_vacation_time()
+            if result:
+                self._attr_native_value = result['offset_temperature']
+        except Exception as e:
+            _LOGGER.error("Error updating vacation temperature offset: %s", e)
+
+class EnstoVacationPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for vacation mode power offset percentage."""
+
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Vacation Power Offset"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_vacation_power_offset"
+        self._attr_native_min_value = -100
+        self._attr_native_max_value = 100
+        self._attr_native_step = 1
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._current_mode = None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+        
+        Entity is only available in Power heating mode (mode 4).
+        """
+        return self._current_mode == 4
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the vacation power offset percentage.
+        
+        Reads current vacation settings and updates only the power
+        offset while preserving other settings.
+        """
+        try:
+            settings = await self._manager.read_vacation_time()
+            if settings:
+                await self._manager.write_vacation_time(
+                    time_from=settings['time_from'],
+                    time_to=settings['time_to'],
+                    offset_temperature=settings['offset_temperature'],
+                    offset_percentage=int(value),
+                    enabled=settings['enabled']
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set vacation power offset: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            mode_result = await self._manager.read_heating_mode()
+            if mode_result:
+                self._current_mode = mode_result['mode_number']
+            
+            result = await self._manager.read_vacation_time()
+            if result:
+                self._attr_native_value = result['offset_percentage']
+        except Exception as e:
+            _LOGGER.error("Error updating vacation power offset: %s", e)

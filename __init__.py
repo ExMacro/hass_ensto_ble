@@ -23,7 +23,7 @@ from .ensto_thermostat_manager import EnstoThermostatManager
 _LOGGER = logging.getLogger(__name__)
 
 # List of supported platforms for this integration
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT, Platform.NUMBER, Platform.DATETIME]
 
 # Set device name service
 SERVICE_SET_NAME = "set_device_name"

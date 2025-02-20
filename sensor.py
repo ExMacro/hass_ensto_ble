@@ -12,9 +12,12 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
+from homeassistant.components.datetime import DateTimeEntity
+
 
 from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, SIGNAL_DATETIME_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
