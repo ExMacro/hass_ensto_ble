@@ -9,6 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
+from asyncio import sleep
 
 from .const import DOMAIN, SIGNAL_DATETIME_UPDATE
 from .base_entity import EnstoBaseEntity
@@ -70,53 +71,79 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
         self.async_write_ha_state()
 
     async def async_set_value(self, value: datetime) -> None:
-        """Update the datetime value and write to device."""
-        try:
-            # Home Assistant handles times internally as UTC, but user sees and inputs local time in the UI.
-            # When the value is passed here, it's already in UTC format but represents the local time entered by the user.
-            
-            # Fetch current settings from the device
-            current_settings = await self._manager.read_vacation_time()
-            if not current_settings:
-                _LOGGER.error("Failed to read current vacation settings")
-                return
-                
-            # Determine which value to update
-            if self._date_type == 'start':
-                time_from = value  # User input time, no conversion needed
-                time_to = current_settings['time_to']
-            else:  # end
-                time_from = current_settings['time_from']
-                time_to = value  # User input time, no conversion needed
-            
-            # Get temperature and power offset values
-            device_name_slug = self._manager.device_name.lower().replace(" ", "_")
-            temp_offset_entity_id = f'number.{device_name_slug}_vacation_temperature_offset'
-            power_offset_entity_id = f'number.{device_name_slug}_vacation_power_offset'
-            
-            temp_state = self.hass.states.get(temp_offset_entity_id)
-            power_state = self.hass.states.get(power_offset_entity_id)
-            
-            temp_value = float(temp_state.state) if temp_state and temp_state.state not in ['unknown', 'unavailable'] else current_settings['offset_temperature']
-            power_value = int(float(power_state.state)) if power_state and power_state.state not in ['unknown', 'unavailable'] else current_settings['offset_percentage']
-            
-            # Write values to the device
-            success = await self._manager.write_vacation_time(
-                time_from=time_from,
-                time_to=time_to,
-                offset_temperature=temp_value,
-                offset_percentage=power_value,
-                enabled=current_settings.get('enabled', False)
-            )
-            
-            if success:
-                self._attr_native_value = value
-            else:
-                _LOGGER.error(f"Failed to update vacation {self._date_type} time")
-                
-        except Exception as e:
-            _LOGGER.error(f"Error updating vacation time: {e}")
-            raise
+       """Update the datetime value and write to device."""
+       try:
+           # Store the original value for possible rollback
+           original_value = self._attr_native_value
+           
+           # Home Assistant handles times internally as UTC, but user sees and inputs local time in the UI.
+           # When the value is passed here, it's already in UTC format but represents the local time entered by the user.
+               
+           # Fetch current settings from the device
+           current_settings = await self._manager.read_vacation_time()
+           if not current_settings:
+               _LOGGER.error("Failed to read current vacation settings")
+               return
+                   
+           # Determine which value to update and validate time order
+           time_from = value if self._date_type == 'start' else current_settings['time_from']
+           time_to = value if self._date_type == 'end' else current_settings['time_to']
+           
+           # Validate that start time is before end time
+           if time_from >= time_to:
+               _LOGGER.error("Invalid vacation time: start time must be before end time")
+               self._attr_native_value = original_value
+               self.async_write_ha_state()
+               return
+           
+           # Get temperature and power offset values
+           device_name_slug = self._manager.device_name.lower().replace(" ", "_")
+           temp_offset_entity_id = f'number.{device_name_slug}_vacation_temperature_offset'
+           power_offset_entity_id = f'number.{device_name_slug}_vacation_power_offset'
+           
+           temp_state = self.hass.states.get(temp_offset_entity_id)
+           power_state = self.hass.states.get(power_offset_entity_id)
+           
+           temp_value = float(temp_state.state) if temp_state and temp_state.state not in ['unknown', 'unavailable'] else current_settings['offset_temperature']
+           power_value = int(float(power_state.state)) if power_state and power_state.state not in ['unknown', 'unavailable'] else current_settings['offset_percentage']
+           
+           # Write values to the device
+           success = await self._manager.write_vacation_time(
+               time_from=time_from,
+               time_to=time_to,
+               offset_temperature=temp_value,
+               offset_percentage=power_value,
+               enabled=current_settings.get('enabled', False)
+           )
+
+           if success:
+               # After writing, read back the values to ensure synchronization
+               # Add a small delay to allow device to process the change
+               await sleep(0.5)  # Give device 500ms to process the change
+               verify_settings = await self._manager.read_vacation_time()
+               
+               if verify_settings:
+                   # Verify that the value is actually what we requested and use device's value
+                   verified_value = verify_settings['time_from'] if self._date_type == 'start' else verify_settings['time_to']
+                   self._attr_native_value = verified_value
+               else:
+                   # If verification read fails, revert to original value
+                   _LOGGER.error("Failed to verify vacation time update")
+                   self._attr_native_value = original_value
+           else:
+               # If write fails, revert to original value
+               _LOGGER.error(f"Failed to update vacation {self._date_type} time")
+               self._attr_native_value = original_value
+
+           # Force UI update
+           self.async_write_ha_state()
+               
+       except Exception as e:
+           _LOGGER.error(f"Error updating vacation time: {e}")
+           # In case of error, try to update with actual value from device
+           await self.async_update()
+           self.async_write_ha_state()
+           raise
 
     async def async_update(self) -> None:
         """Fetch current datetime value from the device."""
