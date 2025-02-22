@@ -34,7 +34,7 @@ To put your thermostat in pairing mode:
 2. Select service `hass_ensto_ble.set_device_name`
 3. Select a thermostat name entity if you have multiple thermostats
 4. Enter a new name in the Name field (maximum 25 characters)
-5. Click "PERMORM ACTION"
+5. Click "PERFORM ACTION"
 
 The new name will be visible:
 - In the Devices & services > Integrations page
