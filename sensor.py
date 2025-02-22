@@ -98,6 +98,7 @@ async def async_setup_entry(
             EnstoNumberSensor(manager, "alarm"),
             EnstoDateTimeSensor(manager),
             EnstoPowerConsumptionSensor(manager),
+            EnstoNameSensor(manager),
         ])
 
         # Add floor sensor only if value exists and is non-zero
@@ -346,3 +347,20 @@ class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
 
         except Exception as e:
             _LOGGER.error("Error updating power consumption sensor: %s", e)
+
+class EnstoNameSensor(EnstoBaseSensor):
+    """Name sensor for Ensto thermostat."""
+
+    def __init__(self, manager):
+        """Initialize the sensor."""
+        super().__init__(manager, "name")
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Name"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_name"
+        self._attr_device_class = "name"  # Custom device class for targeting in services
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._data_key = "device_name"
+        self._attr_native_value = self._manager.device_name
+
+    async def async_update(self) -> None:
+        """Fetch current device name."""
+        self._attr_native_value = self._manager.device_name

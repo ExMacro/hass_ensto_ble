@@ -1,6 +1,11 @@
 set_device_name:
   name: Set device name
   description: Set a new name for the Ensto device
+  target:
+    entity:
+      integration: hass_ensto_ble
+      domain: sensor
+      device_class: name
   fields:
     name:
       name: Name

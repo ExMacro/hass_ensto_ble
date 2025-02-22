@@ -8,8 +8,8 @@
     "issue_tracker": "https://github.com/ExMacro/hass_ensto_ble/issues",
     "iot_class": "local_polling",
     "requirements": [],
-    "version": "0.3.3",
+    "version": "0.3.5",
     "homeassistant": {
-        "components": ["bluetooth", "select", "switch", "sensor"]
+        "components": ["bluetooth", "select", "switch", "sensor", "number"]
     }
 }
