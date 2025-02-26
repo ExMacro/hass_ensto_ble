@@ -418,8 +418,8 @@ class EnstoThermostatManager:
                 return False
 
             # Validate input values
-            if not (0 <= offset_degrees <= 50):
-                raise ValueError("Temperature offset must be between 0 and 50 degrees")
+            if not (-20 <= offset_degrees <= 20):
+                raise ValueError("Temperature offset must be between -20 and 20 degrees")
             if not (-100 <= offset_percentage <= 100):
                 raise ValueError("Percentage offset must be between -100 and 100")
             if not (0 <= duration_minutes <= 65535):  # max value for uint16
