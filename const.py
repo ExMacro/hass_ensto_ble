@@ -195,7 +195,7 @@ BYTE[0] 2 =Room, 4=power, 5= force control.
 BOOST_UUID = "ca3c0685-b708-4cd4-a049-5badd10469e7"
 """
 BYTE[0] Boost 0=disabled, 1=enabled
-BYTE[1-2]: Boost offset int16_t as degrees (20 as 2000 and 21,5 as 2150)
+BYTE[1-2]: Boost offset int16_t as degrees (Expected range: -20 to 20°C -20 → -2000, 20 → 2000)
 BYTE[3]: Boost offset int8_t percentage
 BYTE[4-5]: Boost time set point in minutes uint8_t
 BYTE[6-7]: Boost time in minutes uint8_t, returns remaining boost time
