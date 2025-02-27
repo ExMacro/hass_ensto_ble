@@ -99,8 +99,8 @@ class EnstoBoostOffsetNumber(EnstoBaseEntity, NumberEntity):
        super().__init__(manager)
        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Temperature Offset"
        self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_temp_offset"
-       self._attr_native_min_value = 0
-       self._attr_native_max_value = 5
+       self._attr_native_min_value = -20
+       self._attr_native_max_value = 20
        self._attr_native_step = 0.5
        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
        self._attr_device_class = NumberDeviceClass.TEMPERATURE
