@@ -1,7 +1,7 @@
 {
   "name": "Hass Ensto BLE",
   "country": "FI",
-  "content_in_root": true,
+  "content_in_root": false,
   "render_readme": true,
   "homeassistant": "2022.8"
 }
