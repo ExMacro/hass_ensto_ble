@@ -3,12 +3,12 @@ _Custom component to read and write data from Ensto BLE thermostats._
 
 ## Note
 - This is a development version. It's a hobby project and will be developed slowly for my own purposes. Please be patient.
-- Integration tested on Raspberry PI 4, Home Assistant OS 14.2, Supervisor 2025.02.1, Core 2025.2.4
+- Integration tested on Raspberry PI 4, Home Assistant OS 15, Supervisor 2025.03.3, Core 2025.3.3
 - Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description
 - The version v0.3.5 onwards works with multiple thermostats.
 - The version v0.2.1 onwards works with ESP32 Bluetooth proxies
 
-### Installation
+### Manual installation
 
 1. Navigate to your Home Assistant configuration directory (where `configuration.yaml` is located)
 2. Create a `custom_components` directory if it doesn't exist
@@ -18,6 +18,13 @@ _Custom component to read and write data from Ensto BLE thermostats._
 6. Restart Home Assistant
 7. Go to Settings > Devices & services > Add Integration
 8. Search for "Hass Ensto BLE"
+
+### HACS installation
+1. Add the repository https://github.com/ExMacro/hass_ensto_ble to HACS as a custom repository
+2. Download the latest release to HACS
+3. Restart HA
+4. Go to Settings > Devices & services > Add Integration
+5. Search for "Hass Ensto BLE"
 
 The integration will automatically scan for Ensto BLE thermostats in pairing mode.
 
