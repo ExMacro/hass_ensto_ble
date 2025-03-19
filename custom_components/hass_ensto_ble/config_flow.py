@@ -55,10 +55,16 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 reason="No Ensto BLE devices in pairing mode. Hold BLE reset button for >0.5 seconds. Blue LED will blink."
             )
 
-        self._discovered_devices = {
-            addr: f"{device.name} ({addr})"
-            for addr, (device, _) in pairing_devices.items()
-        }
+        self._discovered_devices = {}
+        for addr, (device, _) in pairing_devices.items():
+            # Get RSSI value for the device
+            rssi = device.rssi if hasattr(device, 'rssi') else None
+            
+            # Include RSSI in the device name if available
+            if rssi is not None:
+                self._discovered_devices[addr] = f"{device.name} ({addr}) [{rssi} dBm]"
+            else:
+                self._discovered_devices[addr] = f"{device.name} ({addr})"
 
         return self.async_show_form(
             step_id="user",
