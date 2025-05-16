@@ -3,10 +3,20 @@ _Custom component to read and write data from Ensto BLE thermostats._
 
 ## Note
 - This is a development version. It's a hobby project and will be developed slowly for my own purposes. Please be patient.
-- Integration tested on Raspberry PI 4, Home Assistant OS 15, Supervisor 2025.03.3, Core 2025.3.3
-- Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description
+- Integration tested on Raspberry PI 4, Home Assistant OS 15, Supervisor 2025.03.3, Core 2025.3.3. The intergration is not guaranteed to work with other HA installations.
+- Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description.
 - The version v0.3.5 onwards works with multiple thermostats.
-- The version v0.2.1 onwards works with ESP32 Bluetooth proxies
+- The version v0.2.1 onwards works with ESP32 Bluetooth proxies.
+
+
+## If you have trouble pairing your thermostat
+Some users have needed additional pairing in the terminal to establish a Bluetooth connection.
+
+- In Home Assistant terminal, run bluetoothctl. You can continue entering commands while Bluetooth messages appear on screen.
+- First type trust XX:XX:XX:XX:XX:XX (replace with your device's MAC address)
+- Second type pair XX:XX:XX:XX:XX:XX (replace with your device's MAC address)
+- Set your Ensto BLE thermostat to pairing mode (blue light blinking)
+- Proceed adding the Ensto BLE thermostat in Home Assistant
 
 ### Manual installation
 
