@@ -91,7 +91,6 @@ Boost power offset and vacation power offset are only used in the Power heating 
 3. To synchronize the time:
    - Go to Developer Tools > Actions
    - Select service `hass_ensto_ble.set_device_time`
-   - Select your thermostat device
    - Select your thermostat's DateTime entity
    - Click "PERFORM ACTION"
 4. Navigate to Settings > Devices & services > [Your thermostat]
