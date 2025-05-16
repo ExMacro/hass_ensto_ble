@@ -79,10 +79,11 @@ Boost power offset and vacation power offset are only used in the Power heating 
 1. Home Assistant shows a notification if the device time differs more than one minute from Home Assistant time
 2. Time is handled internally in UTC to ensure consistent operation across time zones
 3. To synchronize the time:
-   - Go to Developer Tools > Services
+   - Go to Developer Tools > Actions
    - Select service `hass_ensto_ble.set_device_time`
+   - Select your thermostat device
    - Select your thermostat's DateTime entity
-   - Click "CALL SERVICE"
+   - Click "PERFORM ACTION"
 4. Navigate to Settings > Devices & services > [Your thermostat]
 5. Verify that the DateTime sensor shows the correct local time
 6. The notification will automatically disappear once the time is synchronized
