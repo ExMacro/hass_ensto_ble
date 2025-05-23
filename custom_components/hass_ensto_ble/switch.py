@@ -254,12 +254,14 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
         try:
             settings = await self._manager.read_vacation_time()
             if settings:
-                # Add debug logging here
+                # Format debug message consistently with other components
                 local_from = dt_util.as_local(settings['time_from'])
                 local_to = dt_util.as_local(settings['time_to'])
                 _LOGGER.debug(
-                    "Vacation mode settings: raw=%s, from=%s, to=%s, active=%s",
-                    settings.get('raw_data', ''),
+                    "Updated %s Vacation Mode for %s: enabled=%s, from=%s, to=%s, active=%s",
+                    self._manager.device_name or self._manager.mac_address,
+                    self._manager.mac_address,
+                    settings.get('enabled', False),
                     local_from.strftime('%Y-%m-%d %H:%M:%S'),
                     local_to.strftime('%Y-%m-%d %H:%M:%S'),
                     settings.get('active', False)
