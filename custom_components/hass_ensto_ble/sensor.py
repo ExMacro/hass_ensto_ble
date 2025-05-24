@@ -55,17 +55,19 @@ class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
     async def async_update(self) -> None:
         """Fetch new state data for the sensor."""
         try:
-            data = await self._manager.read_split_characteristic(REAL_TIME_INDICATION_UUID)
-            if data:
-                parsed_data = self._manager.parse_real_time_indication(data)
+            coordinator = self._manager.get_real_time_coordinator()
+            parsed_data = await coordinator.get_real_time_data()
+
+            if parsed_data:
                 self._last_parsed_data = parsed_data
                 self._attr_native_value = parsed_data[self._data_key]
-                _LOGGER.debug(
-                    "Updated %s for %s: %s",
-                    self._attr_name,
-                    self._manager.mac_address,
-                    self._attr_native_value
-                )
+                
+            _LOGGER.debug(
+                "Updated %s for %s: %s",
+                self._attr_name,
+                self._manager.mac_address,
+                self._attr_native_value
+            )
 
         except Exception as e:
             _LOGGER.error("Error updating sensor: %s", e)

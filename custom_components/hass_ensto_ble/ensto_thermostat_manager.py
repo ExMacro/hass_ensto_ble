@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from calendar import monthrange
 from homeassistant.util import dt as dt_util
+from .data_coordinator import EnstoRealTimeCoordinator
 
 from .const import (
     MANUFACTURER_ID,
@@ -68,6 +69,12 @@ class EnstoThermostatManager:
         self.storage_manager = EnstoStorageManager(hass)
         self.model_number = None
         self.device_name = None
+        self.real_time_coordinator = None
+
+    def get_real_time_coordinator(self):
+        if not self.real_time_coordinator:
+            self.real_time_coordinator = EnstoRealTimeCoordinator(self)
+        return self.real_time_coordinator
 
     def setup(self) -> None:
         """Set up the scanner when needed."""
