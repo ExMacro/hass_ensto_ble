@@ -56,7 +56,7 @@ SUPPORTED_MODES_ELTE6 = {2, 4}
 
 # Floor sensor types (only the ones in Ensto app) and parameter values (as written to device by Ensto app)
 FLOOR_SENSOR_CONFIG = {
-    "10 kOhm": {
+    "10 kΩ": {
         "sensor_type": 2,
         "sensor_missing_limit": 4007,
         "sensor_b_value": 3800,
@@ -65,7 +65,7 @@ FLOOR_SENSOR_CONFIG = {
         "resistance_25c": 10000,
         "offset": -1
     },
-    "12 kOhm": {
+    "12 kΩ": {
         "sensor_type": 3,
         "sensor_missing_limit": 4007,
         "sensor_b_value": 3600,
@@ -74,7 +74,7 @@ FLOOR_SENSOR_CONFIG = {
         "resistance_25c": 12000,
         "offset": -7
     },
-    "15 kOhm": {
+    "15 kΩ": {
         "sensor_type": 4,
         "sensor_missing_limit": 4007,
         "sensor_b_value": 3400,
@@ -83,7 +83,7 @@ FLOOR_SENSOR_CONFIG = {
         "resistance_25c": 15000,
         "offset": -5
     },
-    "33 kOhm": {
+    "33 kΩ": {
         "sensor_type": 6,
         "sensor_missing_limit": 4007,
         "sensor_b_value": 4100,
@@ -92,7 +92,7 @@ FLOOR_SENSOR_CONFIG = {
         "resistance_25c": 33000,
         "offset": -4
     },
-    "47 kOhm": {
+    "47 kΩ": {
         "sensor_type": 7,
         "sensor_missing_limit": 4007,
         "sensor_b_value": 3850,

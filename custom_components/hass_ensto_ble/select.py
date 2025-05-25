@@ -173,14 +173,14 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
 
                 # Log all values in debug
                 _LOGGER.debug(
-                    "Floor sensor configuration:"
-                    f"\n  Sensor Type: {sensor_type} ({FLOOR_SENSOR_TYPES.get(sensor_type, 'Unknown')})"
-                    f"\n  Sensor Missing Limit ADC: {sensor_missing_limit}"
-                    f"\n  Sensor B Value: {sensor_b_value}"
-                    f"\n  Pull-Up Resistor: {pull_up_resistor}"
-                    f"\n  Sensor Broken Limit ADC: {sensor_broken_limit}"
-                    f"\n  Resistance at 25C: {resistance_25c}"
-                    f"\n  Offset: {offset}"
+                    "Updated %s Floor Sensor for %s: type=%s, resistance=%s, offset=%.1f°C, adc_limits=%d-%d",
+                    self._manager.device_name or self._manager.mac_address,
+                    self._manager.mac_address,
+                    FLOOR_SENSOR_TYPES.get(sensor_type, 'Unknown'),
+                    f"{resistance_25c//1000} kΩ" if resistance_25c >= 1000 else f"{resistance_25c}",
+                    offset,
+                    sensor_broken_limit,
+                    sensor_missing_limit
                 )
 
                 # Convert sensor type number to string representation

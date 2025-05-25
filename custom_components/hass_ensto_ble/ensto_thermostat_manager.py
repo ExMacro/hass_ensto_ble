@@ -90,64 +90,64 @@ class EnstoThermostatManager:
             await self.client.disconnect()
 
     async def connect(self) -> None:
-            """Establish connection to the device."""
-            if await self._connect_lock.acquire():
-                try:
-                    if self.client and self.client.is_connected:
-                        return
+        """Establish connection to the device."""
+        if await self._connect_lock.acquire():
+            try:
+                if self.client and self.client.is_connected:
+                    return
 
-                    _LOGGER.debug("Finding device %s", self.mac_address)
-                    device = bluetooth.async_ble_device_from_address(self.hass, self.mac_address)
-                    if not device:
-                        raise Exception(f"Device {self.mac_address} not found")
+                _LOGGER.debug("Finding device %s", self.mac_address)
+                device = bluetooth.async_ble_device_from_address(self.hass, self.mac_address)
+                if not device:
+                    raise Exception(f"Device {self.mac_address} not found")
 
-                    _LOGGER.debug("Connecting to device %s", self.mac_address)
-                    self.client = BleakClient(device)
-                    await self.client.connect(timeout=10.0)
-                    _LOGGER.debug("Connected to device %s", self.mac_address)
+                _LOGGER.debug("Connecting to device %s", self.mac_address)
+                self.client = BleakClient(device)
+                await self.client.connect(timeout=10.0)
+                _LOGGER.debug("Connected to device %s", self.mac_address)
 
-                    # always pair to set encryption
-                    _LOGGER.debug("Pairing with device %s", self.mac_address)
-                    await self.client.pair()
-                    _LOGGER.debug("Paired device %s", self.mac_address)
+                # always pair to set encryption
+                _LOGGER.debug("Pairing with device %s", self.mac_address)
+                await self.client.pair()
+                _LOGGER.debug("Paired device %s", self.mac_address)
 
-                    # Check storage first
-                    stored_id = await self.read_device_info()
-                    
-                    if stored_id is None:
-                        # No stored ID, need to get factory_reset_id from device
-                        _LOGGER.info("No stored Factory Reset ID found, attempting pairing...")
-                            
-                        # Get Factory Reset ID from device 
-                        try:
-                            device_id = await self.read_factory_reset_id()
-                            if device_id:
-                                _LOGGER.info("Got Factory Reset ID from device")
-                                await self.write_device_info(self.mac_address, device_id)
-                                stored_id = device_id
-                            else:
-                                raise Exception("Could not get Factory Reset ID from device")
-                        except Exception as e:
-                            _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
-                            raise
-                    
-                    # Write Factory Reset ID to device
-                    await self.write_factory_reset_id(stored_id)
-                    
-                    # Read and store model number and device name after successful connection
-                    self.model_number = await self.read_model_number()
-                    self.device_name = await self.read_device_name()
-                    
-                    _LOGGER.info("Successfully verified Factory Reset ID and read model number")
+                # Check storage first
+                stored_id = await self.read_device_info()
+                
+                if stored_id is None:
+                    # No stored ID, need to get factory_reset_id from device
+                    _LOGGER.info("No stored Factory Reset ID found, attempting pairing...")
+                        
+                    # Get Factory Reset ID from device
+                    try:
+                        device_id = await self.read_factory_reset_id()
+                        if device_id:
+                            _LOGGER.info("Got Factory Reset ID from device")
+                            await self.write_device_info(self.mac_address, device_id)
+                            stored_id = device_id
+                        else:
+                            raise Exception("Could not get Factory Reset ID from device")
+                    except Exception as e:
+                        _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
+                        raise
+                
+                # Write Factory Reset ID to device
+                await self.write_factory_reset_id(stored_id)
+                
+                # Read and store model number and device name after successful connection
+                self.model_number = await self.read_model_number()
+                self.device_name = await self.read_device_name()
+                
+                _LOGGER.info("Successfully verified Factory Reset ID and read model number")
 
-                except Exception as e:
-                    _LOGGER.error("Failed to connect: %s", str(e))
-                    self.client = None
-                    raise
-                finally:
-                    self._connect_lock.release()
-            else:
-                raise Exception("Already connecting")
+            except Exception as e:
+                _LOGGER.error("Failed to connect: %s", str(e))
+                self.client = None
+                raise
+            finally:
+                self._connect_lock.release()
+        else:
+            raise Exception("Already connecting")
 
     async def ensure_connection(self) -> None:
         """Ensure that we have a connection to the device."""
@@ -359,6 +359,11 @@ class EnstoThermostatManager:
             model_number = model_number_raw.decode('utf-8')
             return model_number
             
+        except BleakError as e:
+            _LOGGER.error("BLE error reading model number: %s", e)
+            self.client = None
+            return None
+            
         except Exception as e:
             _LOGGER.error("Failed to read model number: %s", e)
             return None
@@ -378,44 +383,49 @@ class EnstoThermostatManager:
             _LOGGER.error("Failed to set adaptive temperature control: %s", e)
 
     async def read_boost(self) -> dict:
-            """Read boost configuration from device."""
-            try:
-                if not self.client or not self.client.is_connected:
-                    _LOGGER.error("Device not connected.")
-                    return None
-
-                # Read raw data from device
-                data = await self.client.read_gatt_char(BOOST_UUID)
-
-                # Parse data
-                enabled = bool(data[0])  # First byte is enable flag
-                
-                # Parse temperature offset (bytes 1-2 as signed int16)
-                # Convert from raw value (2150 = 21.5 degrees)
-                offset_raw = int.from_bytes(data[1:3], byteorder='little', signed=True)
-                offset_degrees = offset_raw / 100.0
-                
-                # Parse percentage offset (byte 3)
-                # Convert percentage offset byte to signed int (range -128 to 127)
-                offset_percentage = int.from_bytes([data[3]], byteorder='little', signed=True)
-                
-                # Parse time setpoint (bytes 4-5 as unsigned int16)
-                setpoint_minutes = int.from_bytes(data[4:6], byteorder='little')
-                
-                # Parse remaining time (bytes 6-7 as unsigned int16)
-                remaining_minutes = int.from_bytes(data[6:8], byteorder='little')
-
-                return {
-                    'enabled': enabled,
-                    'offset_degrees': offset_degrees,
-                    'offset_percentage': offset_percentage,
-                    'setpoint_minutes': setpoint_minutes,
-                    'remaining_minutes': remaining_minutes
-                }
-
-            except Exception as e:
-                _LOGGER.error("Failed to read boost config: %s", e)
+        """Read boost configuration from device."""
+        try:
+            if not self.client or not self.client.is_connected:
+                _LOGGER.error("Device not connected.")
                 return None
+
+            # Read raw data from device
+            data = await self.client.read_gatt_char(BOOST_UUID)
+
+            # Parse data
+            enabled = bool(data[0])  # First byte is enable flag
+            
+            # Parse temperature offset (bytes 1-2 as signed int16)
+            # Convert from raw value (2150 = 21.5 degrees)
+            offset_raw = int.from_bytes(data[1:3], byteorder='little', signed=True)
+            offset_degrees = offset_raw / 100.0
+            
+            # Parse percentage offset (byte 3)
+            # Convert percentage offset byte to signed int (range -128 to 127)
+            offset_percentage = int.from_bytes([data[3]], byteorder='little', signed=True)
+            
+            # Parse time setpoint (bytes 4-5 as unsigned int16)
+            setpoint_minutes = int.from_bytes(data[4:6], byteorder='little')
+            
+            # Parse remaining time (bytes 6-7 as unsigned int16)
+            remaining_minutes = int.from_bytes(data[6:8], byteorder='little')
+
+            return {
+                'enabled': enabled,
+                'offset_degrees': offset_degrees,
+                'offset_percentage': offset_percentage,
+                'setpoint_minutes': setpoint_minutes,
+                'remaining_minutes': remaining_minutes
+            }
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading boost config: %s", e)
+            self.client = None
+            return None
+            
+        except Exception as e:
+            _LOGGER.error("Failed to read boost config: %s", e)
+            return None
 
     async def write_boost(self, enabled: bool, offset_degrees: float, offset_percentage: int, duration_minutes: int) -> bool:
         """Write boost configuration to device."""
@@ -457,6 +467,11 @@ class EnstoThermostatManager:
             await self.client.write_gatt_char(BOOST_UUID, data, response=True)
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing boost config: %s", e)
+            self.client = None
+            return None
+            
         except Exception as e:
             _LOGGER.error("Failed to write boost config: %s", e)
             return False
@@ -480,6 +495,11 @@ class EnstoThermostatManager:
                 'mode_name': mode_name
             }
 
+        except BleakError as e:
+            _LOGGER.error("BLE error reading heating mode: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read heating mode: %s", e)
             return None
@@ -506,6 +526,11 @@ class EnstoThermostatManager:
             await self.client.write_gatt_char(HEATING_MODE_UUID, data, response=True)
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing heating mode: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write heating mode: %s", e)
             return False
@@ -527,6 +552,11 @@ class EnstoThermostatManager:
                 'enabled': enabled
             }
 
+        except BleakError as e:
+            _LOGGER.error("BLE error reading adaptive temperature control: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read adaptive temperature control: %s", e)
             return None
@@ -545,6 +575,11 @@ class EnstoThermostatManager:
             await self.client.write_gatt_char(ADAPTIVE_TEMPERATURE_CONTROL_UUID, data, response=True)
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing adaptive temperature control: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write adaptive temperature control: %s", e)
             return False
@@ -573,7 +608,12 @@ class EnstoThermostatManager:
             # Decode using UTF-8 to handle Nordic characters
             device_name = name_bytes.decode('utf-8')
             return device_name
-            
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading device name: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error(f"Failed to read device name: {e}")
             return None
@@ -599,6 +639,11 @@ class EnstoThermostatManager:
             _LOGGER.info(f"Successfully wrote device name: {new_name}")
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing device name: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error(f"Failed to write device name: {str(e)}")
             return False
@@ -703,6 +748,11 @@ class EnstoThermostatManager:
                 "second": second
             }
 
+        except BleakError as e:
+            _LOGGER.error("BLE error reading date and time from device: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read date and time from device: %s", e)
             return None
@@ -782,6 +832,11 @@ class EnstoThermostatManager:
             await self.client.write_gatt_char(DATE_AND_TIME_UUID, data, response=True)
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing UTC time to device: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write UTC time to device: %s", e)
             return False
@@ -821,6 +876,11 @@ class EnstoThermostatManager:
                 'timezone_offset': timezone_offset
             }
 
+        except BleakError as e:
+            _LOGGER.error("BLE error reading daylight saving config: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read daylight saving config: %s", e)
             return None
@@ -874,6 +934,11 @@ class EnstoThermostatManager:
             )
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing daylight saving config: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write daylight saving config: %s", e)
             return False
@@ -896,6 +961,12 @@ class EnstoThermostatManager:
                 'low_value': int.from_bytes(data[0:2], byteorder='little') / 100,
                 'high_value': int.from_bytes(data[2:4], byteorder='little') / 100
             }
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading floor limits: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read floor limits: %s", e)
             return None
@@ -938,11 +1009,17 @@ class EnstoThermostatManager:
                
             await self.client.write_gatt_char(FLOOR_LIMITS_UUID, data)
             _LOGGER.debug(
-                "Floor limits written successfully: min=%.1f°C, max=%.1f°C",
+                "Floor limits written successfully: min=%.1f °C, max=%.1f °C",
                 low_value,
                 high_value
             )
             return True
+
+        except BleakError as e:
+            _LOGGER.error("BLE error writing floor limits: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write floor limits: %s", e)
             return False
@@ -961,7 +1038,12 @@ class EnstoThermostatManager:
             return {
                 'calibration_value': calibration_value
             }
-                
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading room sensor calibration: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read room sensor calibration: %s", e)
             return None
@@ -987,6 +1069,11 @@ class EnstoThermostatManager:
             
             return True
                 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing room sensor calibration: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write room sensor calibration: %s", e)
             return False
@@ -999,6 +1086,12 @@ class EnstoThermostatManager:
             data = await self.client.read_gatt_char(SOFTWARE_REVISION_UUID)
             # Parse format: app;ble;bootloader
             return data.decode('utf-8')
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading software revision: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to read software revision: %s", e)
             return None
@@ -1011,6 +1104,12 @@ class EnstoThermostatManager:
             data = await self.client.read_gatt_char(HARDWARE_REVISION_UUID)
             hw_version = int.from_bytes(data[0:4], byteorder='little')
             return str(hw_version)
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading hardware revision: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Failed to read hardware revision: %s", e)
             return None
@@ -1036,6 +1135,12 @@ class EnstoThermostatManager:
             return {
                 'heating_power': heating_power
             }
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading custom heating power value: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Failed to read custom heating power value: %s", e)
             return None
@@ -1065,6 +1170,11 @@ class EnstoThermostatManager:
 
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing custom heating power value: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Failed to write custom heating power value: %s", e)
             return False
@@ -1090,6 +1200,12 @@ class EnstoThermostatManager:
             return {
                 'floor_area': floor_area
             }
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading custom floor area value: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Failed to read custom floor area value: %s", e)
             return None
@@ -1122,6 +1238,11 @@ class EnstoThermostatManager:
 
             return True
 
+        except BleakError as e:
+            _LOGGER.error("BLE error writing custom floor area value: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Failed to write custom floor area value: %s", e)
             return False
@@ -1171,6 +1292,12 @@ class EnstoThermostatManager:
                 'currency_symbol': CURRENCY_SYMBOLS.get(currency, ""),
                 'price': price
             }
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading energy unit configuratio: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Failed to read energy unit configuration: %s", e)
             return None
@@ -1214,6 +1341,11 @@ class EnstoThermostatManager:
                 CURRENCY_MAP.get(currency, "Unknown"), currency, price
             )
             return True
+
+        except BleakError as e:
+            _LOGGER.error("BLE error writing energy unit configuration: %s", e)
+            self.client = None
+            return None
 
         except Exception as e:
             _LOGGER.error("Failed to write energy unit configuration: %s", e)
@@ -1270,7 +1402,12 @@ class EnstoThermostatManager:
                 'timestamp': timestamp,
                 'measurements': measurements
             }
-            
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading power consumption: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Error reading power consumption: %s", e)
             return None
@@ -1398,6 +1535,11 @@ class EnstoThermostatManager:
 
             return result
 
+        except BleakError as e:
+            _LOGGER.error("BLE error reading monitoring data: %s", e)
+            self.client = None
+            return None
+        
         except Exception as e:
             _LOGGER.error("Error reading monitoring data: %s", e)
             return None
@@ -1454,7 +1596,12 @@ class EnstoThermostatManager:
                 'active': active,
                 'raw_data': data.hex()  # Include raw data for logging
             }
-            
+
+        except BleakError as e:
+            _LOGGER.error("BLE error reading vacation time: %s", e)
+            self.client = None
+            return None
+
         except Exception as e:
             _LOGGER.error("Error reading vacation time: %s", e)
             return None
@@ -1532,7 +1679,12 @@ class EnstoThermostatManager:
            
            await self.client.write_gatt_char(VACATION_TIME_UUID, data)
            return True
-           
+
+       except BleakError as e:
+           _LOGGER.error("BLE error writing vacation time: %s", e)
+           self.client = None
+           return None
+
        except Exception as e:
            _LOGGER.error("Error writing vacation time: %s", e)
            return False
