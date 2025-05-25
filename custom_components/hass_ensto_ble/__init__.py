@@ -16,8 +16,10 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN,
     SIGNAL_DATETIME_UPDATE,
+    CURRENCY_MAP,
 )
 
+from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 from .ensto_thermostat_manager import EnstoThermostatManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +55,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Update config entry title with current info
         title = f"{manager.model_number or 'Unknown Model'} {manager.device_name or entry.data['mac_address']}"
         hass.config_entries.async_update_entry(entry, title=title)
+
+        # Initialize device currency from config flow
+        try:
+            config_currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+            success = await manager.write_energy_unit(config_currency, 0.0)
+            
+            if not success:
+                _LOGGER.warning("Failed to set device currency")
+                
+        except Exception as e:
+            _LOGGER.warning("Failed to initialize device currency: %s", e)
 
         async def set_device_name(call: ServiceCall) -> None:
             """Set device name service."""

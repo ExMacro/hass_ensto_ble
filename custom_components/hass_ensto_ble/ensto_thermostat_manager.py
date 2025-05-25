@@ -1281,18 +1281,13 @@ class EnstoThermostatManager:
             price_raw = int.from_bytes(data[2:4], byteorder='little')
             price = price_raw / 100.0
 
-            # Default to EUR (1) if currency code is invalid
-            if currency not in CURRENCY_MAP:
-                _LOGGER.warning(f"Received invalid currency code: {currency}. Defaulting to EUR.")
-                currency = 1
-
             return {
                 'currency_code': currency,
                 'currency_name': CURRENCY_MAP.get(currency, "Unknown"),
                 'currency_symbol': CURRENCY_SYMBOLS.get(currency, ""),
                 'price': price
             }
-
+        
         except BleakError as e:
             _LOGGER.error("BLE error reading energy unit configuratio: %s", e)
             self.client = None
@@ -1308,16 +1303,6 @@ class EnstoThermostatManager:
         try:
             if not self.client or not self.client.is_connected:
                 _LOGGER.error("Device not connected.")
-                return False
-
-            # If no currency provided or invalid, default to EUR (1)
-            if currency not in CURRENCY_MAP:
-                _LOGGER.warning(f"Invalid currency code: {currency}. Defaulting to EUR.")
-                currency = 1
-
-            # Validate inputs using CURRENCY_MAP keys
-            if currency not in CURRENCY_MAP:
-                _LOGGER.error(f"Invalid currency code: {currency}")
                 return False
             
             if not (0 <= price <= 655.35):
@@ -1337,7 +1322,8 @@ class EnstoThermostatManager:
             await self.client.write_gatt_char(ENERGY_UNIT_UUID, data, response=True)
             
             _LOGGER.debug(
-                "Wrote energy unit config - Currency: %s (%d), Price: %.2f",
+                "Wrote energy unit config for %s (%s) - Currency: %s (%d), Price: %.2f",
+                self.device_name, self.mac_address,
                 CURRENCY_MAP.get(currency, "Unknown"), currency, price
             )
             return True
