@@ -32,7 +32,7 @@ Some users have needed additional pairing in the terminal to establish a Bluetoo
 8. Search for "Hass Ensto BLE"
 
 ### HACS installation
-1. Add the repository https://github.com/ExMacro/hass_ensto_ble to HACS as a custom repository
+1. Search the repository `HASS Ensto BLE` from HACS default repositories
 2. Download the latest release to HACS
 3. Restart HA
 4. Go to Settings > Devices & services > Add Integration
