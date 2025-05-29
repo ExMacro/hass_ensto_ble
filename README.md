@@ -1,3 +1,5 @@
+![GitHub Release](https://img.shields.io/github/v/release/ExMacro/hass_ensto_ble)
+
 # hass_ensto_ble
 _Custom component to read and write data from Ensto BLE thermostats._
 
