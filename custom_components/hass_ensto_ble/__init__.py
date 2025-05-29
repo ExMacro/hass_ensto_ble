@@ -194,8 +194,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     if unload_ok:
         manager = hass.data[DOMAIN].pop(entry.entry_id)
-        # Remove the  storage file
-        await manager.storage_manager.async_remove_storage()
+        # Remove the device data from storage file
+        await manager.storage_manager.async_remove_device_data(manager.mac_address)
         await manager.cleanup()
     
     # Only remove services if this is the last config entry for the domain

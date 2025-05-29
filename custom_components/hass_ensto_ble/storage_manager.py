@@ -41,10 +41,24 @@ class EnstoStorageManager:
             return data[mac_address]
         return None
 
-    async def async_remove_storage(self) -> None:
-        """Remove storage file completely."""
+    async def async_remove_device_data(self, mac_address: str) -> None:
+        """Remove specific device data from storage."""
         try:
-            await self.store.async_remove()
-            _LOGGER.debug("Removed storage file %s", STORAGE_KEY)
+            current_data = await self.store.async_load() or {}
+            
+            if mac_address in current_data:
+                del current_data[mac_address]
+                
+                # If there are still other devices, save the updated data
+                if current_data:
+                    await self.store.async_save(current_data)
+                    _LOGGER.debug("Removed device data for %s, other devices remain", mac_address)
+                else:
+                    # If no devices left, remove the entire storage file
+                    await self.store.async_remove()
+                    _LOGGER.debug("Removed storage file %s as no devices remain", STORAGE_KEY)
+            else:
+                _LOGGER.debug("Device %s not found in storage", mac_address)
+                
         except Exception as e:
-            _LOGGER.error("Error removing storage file %s: %s", STORAGE_KEY, str(e))
+            _LOGGER.error("Error removing device data for %s: %s", mac_address, str(e))
