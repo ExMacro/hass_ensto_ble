@@ -96,10 +96,9 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
                self.async_write_ha_state()
                return
            
-           # Get temperature and power offset values
-           device_name_slug = self._manager.device_name.lower().replace(" ", "_")
-           temp_offset_entity_id = f'number.{device_name_slug}_vacation_temperature_offset'
-           power_offset_entity_id = f'number.{device_name_slug}_vacation_power_offset'
+           # Get temperature and power offset values. Convert MAC address with : to using underscore
+           temp_offset_entity_id = f'number.ensto_thermostat_{self._manager.mac_address.replace(":", "_").lower()}_vacation_temperature_offset'
+           power_offset_entity_id = f'number.ensto_thermostat_{self._manager.mac_address.replace(":", "_").lower()}_vacation_power_offset'
            
            temp_state = self.hass.states.get(temp_offset_entity_id)
            power_state = self.hass.states.get(power_offset_entity_id)
