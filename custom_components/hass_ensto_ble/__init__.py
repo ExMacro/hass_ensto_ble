@@ -106,6 +106,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async def set_device_time(call: ServiceCall) -> None:
             """Set device time to match Home Assistant time."""
 
+            # Get current UTC time from Home Assistant
+            utc_now = dt_util.utcnow()
+            
+            # Get Home Assistant timezone
+            ha_tz = dt_util.DEFAULT_TIME_ZONE
+            
+            # Calculate timezone offset in minutes from UTC
+            tz_offset = int(ha_tz.utcoffset(utc_now).total_seconds() / 60)
+
             # Extract the target entity from service call data
             target_entity = call.data.get("entity_id")
                 
@@ -113,56 +122,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.error("No target entity specified")
                 return
 
-            # We only process first entity if multiple are provided
+            # Handle both single entity and multiple entities if given by user
             if isinstance(target_entity, list):
-                entity_id = target_entity[0]
+                entity_ids = target_entity
             else:
-                entity_id = target_entity
+                entity_ids = [target_entity]
 
-            # Get the entity registry entry for the target
-            entity_registry = er.async_get(hass)
-            entity_entry = entity_registry.async_get(entity_id)
-            
-            # Get config entry id from entity entry
-            config_entry_id = entity_entry.config_entry_id
-            
-            # Get the correct thermostat manager instance for this device
-            manager = hass.data[DOMAIN][config_entry_id]
-            
-            # Get current UTC time from Home Assistant
-            utc_now = dt_util.utcnow()
+            # Debug timezone info once (applies to all devices)
+            _LOGGER.debug("Action set device time: Home Assistant timezone: %s", ha_tz)
+            _LOGGER.debug("Action set device time: Timezone offset in minutes: %d", tz_offset)
 
-            # Get Home Assistant timezone
-            ha_tz = dt_util.DEFAULT_TIME_ZONE
-            _LOGGER.debug("Home Assistant timezone: %s", ha_tz)
-
-            # Calculate timezone offset in minutes from UTC
-            tz_offset = int(ha_tz.utcoffset(utc_now).total_seconds() / 60)
-            _LOGGER.debug("Timezone offset in minutes: %d", tz_offset)
-
-            # Read current DST settings from the device
-            current_dst_settings = await manager.read_daylight_saving()
-            dst_enabled = current_dst_settings.get('enabled', False) if current_dst_settings else False
-
-            # Write UTC time to the device
-            if await manager.write_date_and_time(
-                utc_now.year,
-                utc_now.month,
-                utc_now.day,
-                utc_now.hour,
-                utc_now.minute,
-                utc_now.second
-            ):
-                # Update timezone and DST settings while preserving DST state
-                await manager.write_daylight_saving(
-                    enabled=dst_enabled,
-                    winter_to_summer=60,
-                    summer_to_winter=60,
-                    timezone_offset=tz_offset
-                )
+            # Process each entity
+            for entity_id in entity_ids:
+                # Get the entity registry entry for the target
+                entity_registry = er.async_get(hass)
+                entity_entry = entity_registry.async_get(entity_id)
                 
-                # Notify only datetime sensor to update
-                async_dispatcher_send(hass, SIGNAL_DATETIME_UPDATE.format(manager.mac_address))
+                # Get config entry id from entity entry
+                config_entry_id = entity_entry.config_entry_id
+                
+                # Get the correct thermostat manager instance for this device
+                manager = hass.data[DOMAIN][config_entry_id]
+                
+                # Read current DST settings from the device
+                current_dst_settings = await manager.read_daylight_saving()
+                dst_enabled = current_dst_settings.get('enabled', False) if current_dst_settings else False
+
+                # Write UTC time to the device
+                if await manager.write_date_and_time(
+                    utc_now.year,
+                    utc_now.month,
+                    utc_now.day,
+                    utc_now.hour,
+                    utc_now.minute,
+                    utc_now.second
+                ):
+                    # Update timezone and DST settings while preserving DST state
+                    await manager.write_daylight_saving(
+                        enabled=dst_enabled,
+                        winter_to_summer=60,
+                        summer_to_winter=60,
+                        timezone_offset=tz_offset
+                    )
+                                        
+                    # Notify only datetime sensor to update
+                    async_dispatcher_send(hass, SIGNAL_DATETIME_UPDATE.format(manager.mac_address))
 
         # Only register services if they don't already exist
         if not hass.services.has_service(DOMAIN, SERVICE_SET_NAME):

@@ -804,9 +804,10 @@ class EnstoThermostatManager:
                 _LOGGER.error(f"Invalid UTC second: {second}")
                 return False
 
-            # Log UTC time being written
             _LOGGER.debug(
-                "Writing UTC time to device: %04d-%02d-%02d %02d:%02d:%02d",
+                "Writing UTC time to %s for %s: %04d-%02d-%02d %02d:%02d:%02d",
+                self.device_name or "Unknown Device",
+                self.mac_address,
                 year, month, day, hour, minute, second
             )
 
@@ -929,8 +930,10 @@ class EnstoThermostatManager:
 
             await self.client.write_gatt_char(DAYLIGHT_SAVING_UUID, data, response=True)
             _LOGGER.debug(
-                "Wrote DST config - enabled: %s, winter->summer: %d min, summer->winter: %d min, timezone: %d min",
-                enabled, winter_to_summer, summer_to_winter, timezone_offset
+                "Wrote DST config to %s for %s: enabled=%s, timezone=%d min",
+                self.device_name or "Unknown Device", 
+                self.mac_address,
+                enabled, timezone_offset
             )
             return True
 
