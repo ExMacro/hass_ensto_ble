@@ -278,16 +278,20 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
                 # Show notification if time difference is more than 1 minute
                 if time_diff > timedelta(minutes=1):
                     if not self._alert_shown:
+                        # Get device name for notification
+                        device_name = self._manager.device_name or "Unknown Device"
+                        
                         await self.hass.services.async_call(
                             "persistent_notification",
                             "create",
                             {
-                                "title": "Time Mismatch Detected",
+                                "title": f"Time Mismatch Detected - {device_name}",
                                 "message": (
-                                    f"Device time (UTC: {device_utc.strftime('%-d.%-m.%Y %-H:%M:%S')}) "
+                                    f"Device {device_name} ({self._manager.mac_address}) time "
+                                    f"(UTC: {device_utc.strftime('%-d.%-m.%Y %-H:%M:%S')}) "
                                     f"differs from Home Assistant time "
                                     f"(UTC: {ha_utc.strftime('%-d.%-m.%Y %-H:%M:%S')}). "
-                                    "Use the Update Device Time service to synchronize."
+                                    "Use the Set device time service in Developer tools to synchronize."
                                 ),
                                 "notification_id": f"ensto_time_{self._manager.mac_address}"
                             }
