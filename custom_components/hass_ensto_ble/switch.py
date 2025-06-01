@@ -9,6 +9,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 
+from datetime import datetime
 from .base_entity import EnstoBaseEntity
 from .const import DOMAIN, SCAN_INTERVAL, SIGNAL_DATETIME_UPDATE
 
@@ -149,9 +150,17 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn daylight saving on."""
-        # Get timezone info from HA
+        
+        # DST ON: Send base timezone (standard time), let device handle DST
         ha_tz = dt_util.DEFAULT_TIME_ZONE
-        tz_offset = int(ha_tz.utcoffset(dt_util.utcnow()).total_seconds() / 60)
+        
+        # Get base timezone using January date (ensures standard time)
+        # Create January datetime in UTC and convert to local timezone
+        january_utc = datetime(2025, 1, 15, 12, 0, 0, tzinfo=dt_util.UTC)
+        january_local = january_utc.astimezone(ha_tz)
+        tz_offset = int(january_local.utcoffset().total_seconds() / 60)
+        
+        _LOGGER.debug("Action [Daylight Saving Enable] for [%s]: base timezone offset %d minutes", self._manager.mac_address, tz_offset)
 
         await self._manager.write_daylight_saving(
             enabled=True,
@@ -160,20 +169,31 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
             timezone_offset=tz_offset
         )
         self._is_on = True
+        
+        _LOGGER.debug("Action [Daylight Saving Enable] for [%s]: successfully enabled", self._manager.mac_address)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn daylight saving off."""
-        # Get timezone info from HA
+        
+        # DST OFF: Send current timezone (with DST already included)
         ha_tz = dt_util.DEFAULT_TIME_ZONE
-        tz_offset = int(ha_tz.utcoffset(dt_util.utcnow()).total_seconds() / 60)
+        utc_now = dt_util.utcnow()
+        
+        # Convert current UTC time to local timezone to get current offset
+        local_now = utc_now.astimezone(ha_tz)
+        tz_offset = int(local_now.utcoffset().total_seconds() / 60)
+        
+        _LOGGER.debug("Action [Daylight Saving Disable] for [%s]: current timezone offset %d minutes", self._manager.mac_address, tz_offset)
 
         await self._manager.write_daylight_saving(
             enabled=False,
-            winter_to_summer=60,  # Standard 1h DST change
-            summer_to_winter=60,  # Standard 1h DST change
+            winter_to_summer=60,  # Not used when DST disabled but keep consistent
+            summer_to_winter=60,  # Not used when DST disabled but keep consistent
             timezone_offset=tz_offset
         )
         self._is_on = False
+        
+        _LOGGER.debug("Action [Daylight Saving Disable] for [%s]: successfully disabled", self._manager.mac_address)
 
     async def async_update(self) -> None:
         """Update daylight saving state."""
@@ -182,6 +202,15 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
             if result:
                 self._is_on = result['enabled']
                 self._additional_info = result
+                _LOGGER.debug(
+                    "Read DST settings %s for %s: enabled=%s, winter_to_summer=%s min, summer_to_winter=%s min, timezone_offset=%s min",
+                    self._manager.device_name or "Unknown",
+                    self._manager.mac_address,
+                    result.get('enabled', False),
+                    result.get('winter_to_summer_offset', 0),
+                    result.get('summer_to_winter_offset', 0),
+                    result.get('timezone_offset', 0)
+                )
         except Exception as e:
             _LOGGER.error("Error updating daylight saving state: %s", e)
 

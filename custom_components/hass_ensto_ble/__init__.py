@@ -109,12 +109,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # Get current UTC time from Home Assistant
             utc_now = dt_util.utcnow()
             
-            # Get Home Assistant timezone
-            ha_tz = dt_util.DEFAULT_TIME_ZONE
-            
-            # Calculate timezone offset in minutes from UTC
-            tz_offset = int(ha_tz.utcoffset(utc_now).total_seconds() / 60)
-
             # Extract the target entity from service call data
             target_entity = call.data.get("entity_id")
                 
@@ -129,8 +123,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 entity_ids = [target_entity]
 
             # Debug timezone info once (applies to all devices)
-            _LOGGER.debug("Action set device time: Home Assistant timezone: %s", ha_tz)
-            _LOGGER.debug("Action set device time: Timezone offset in minutes: %d", tz_offset)
+            _LOGGER.debug("Action [Set Device Time]: setting UTC time %s", utc_now.strftime('%Y-%m-%d %H:%M:%S'))
 
             # Process each entity
             for entity_id in entity_ids:
@@ -148,6 +141,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 current_dst_settings = await manager.read_daylight_saving()
                 dst_enabled = current_dst_settings.get('enabled', False) if current_dst_settings else False
 
+                # Calculate timezone offset based on DST setting (same logic as DST switch)
+                ha_tz = dt_util.DEFAULT_TIME_ZONE
+                
+                if dst_enabled:
+                    # DST enabled: use base timezone offset (standard time)
+                    january_utc = utc_now.replace(month=1, day=15)
+                    january_local = january_utc.astimezone(ha_tz)
+                    tz_offset = int(january_local.utcoffset().total_seconds() / 60)
+
+                    _LOGGER.debug("Action [Set Device Time] for [%s]: DST enabled, using base offset %d min", 
+                                manager.mac_address, tz_offset)
+                else:
+                    # DST disabled: use current offset (includes DST if active)
+                    local_now = utc_now.astimezone(ha_tz)
+                    tz_offset = int(local_now.utcoffset().total_seconds() / 60)
+                    _LOGGER.debug("Action [Set Device Time] for [%s]: DST disabled, using current offset %d min", 
+                                manager.mac_address, tz_offset)
+
                 # Write UTC time to the device
                 if await manager.write_date_and_time(
                     utc_now.year,
@@ -164,9 +175,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         summer_to_winter=60,
                         timezone_offset=tz_offset
                     )
+                    
+                    _LOGGER.debug("Action [Set Device Time] for [%s]: successfully set time with DST=%s, offset=%d min", 
+                                manager.mac_address, dst_enabled, tz_offset)
                                         
                     # Notify only datetime sensor to update
                     async_dispatcher_send(hass, SIGNAL_DATETIME_UPDATE.format(manager.mac_address))
+                else:
+                    _LOGGER.error("Action [Set Device Time] for [%s]: failed to set time", manager.mac_address)
 
         # Only register services if they don't already exist
         if not hass.services.has_service(DOMAIN, SERVICE_SET_NAME):
