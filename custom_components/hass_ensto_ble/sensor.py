@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     UnitOfTemperature,
+    UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -101,6 +102,7 @@ async def async_setup_entry(
             EnstoDateTimeSensor(manager),
             EnstoPowerConsumptionSensor(manager),
             EnstoNameSensor(manager),
+            EnstoCurrentPowerSensor(manager),
         ])
 
         # Add floor sensor only if value exists and is non-zero
@@ -370,3 +372,46 @@ class EnstoNameSensor(EnstoBaseSensor):
     async def async_update(self) -> None:
         """Fetch current device name."""
         self._attr_native_value = self._manager.device_name
+
+class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
+    """Current power consumption sensor showing real-time heating power usage."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the current power sensor."""
+        super().__init__(manager)
+        
+        # Set sensor properties for Home Assistant energy integration
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Current Power"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_current_power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        
+        # Initialize internal state tracking
+        self._heating_power = None
+
+    @property
+    def available(self) -> bool:
+        """Return if sensor is available when heating power is configured."""
+        return self._heating_power is not None and self._heating_power > 0
+
+    async def async_update(self) -> None:
+        """Update the current power consumption value."""
+        # Read heating power setting
+        heating_power_result = await self._manager.read_heating_power()
+        if heating_power_result:
+            self._heating_power = heating_power_result['heating_power']
+        
+        # Calculate power if heating power is configured
+        if self._heating_power and self._heating_power > 0:
+            data = await self._manager.read_split_characteristic(REAL_TIME_INDICATION_UUID)
+            if data:
+                parsed_data = self._manager.parse_real_time_indication(data)
+                relay_active = parsed_data.get("relay_active", False)
+                self._attr_native_value = self._heating_power if relay_active else 0
+            else:
+                self._attr_native_value = None
+        else:
+            self._attr_native_value = None

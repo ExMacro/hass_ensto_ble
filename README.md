@@ -155,3 +155,17 @@ Changes are stored in the thermostat's memory
 4. Enable the vacation mode switch. The thermostat will turn on the vacation mode on and off when the vacation start and end times are reached.
 
 Temperature and power offset values and date settings will automatically update in the UI.
+
+### Real-time Power Consumption Monitoring
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the Heating Power entity and set your thermostat's actual power rating (e.g., 900W)
+3. The Current Power sensor will become available and show:
+   - Full heating power when the relay is ON
+   - 0W when the relay is OFF
+4. To track energy consumption (kWh):
+   - Go to Settings > Helpers > Create Helper > Integral Sensor
+   - Select your thermostat's Current Power sensor as input
+   - Set Method to "Left Riemann sum" and Unit prefix to "kilo (k)"
+   - The resulting kWh sensor can be added to Home Assistant's Energy Dashboard
+
+This enables complete energy monitoring including real-time power usage, daily/monthly consumption tracking, and cost calculations.
