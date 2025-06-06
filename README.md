@@ -1,7 +1,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/ExMacro/hass_ensto_ble)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/ExMacro/hass_ensto_ble)
 ![GitHub License](https://img.shields.io/github/license/ExMacro/hass_ensto_ble)
-
+[![Installs](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=installs&suffix=%20total&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.hass_ensto_ble.total)](https://github.com/ExMacro/hass_ensto_ble)
 
 # hass_ensto_ble
 _Custom component to read and write data from Ensto BLE thermostats._
