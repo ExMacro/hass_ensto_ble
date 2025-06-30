@@ -113,12 +113,10 @@ class EnstoThermostatManager:
 
                 # Check storage first
                 stored_id = await self.read_device_info()
-                
+                device_id = None
                 if stored_id is None:
                     # No stored ID, need to get factory_reset_id from device
                     _LOGGER.info("No stored Factory Reset ID found, attempting pairing...")
-                        
-                    # Get Factory Reset ID from device
                     try:
                         device_id = await self.read_factory_reset_id()
                         if device_id:
@@ -127,6 +125,19 @@ class EnstoThermostatManager:
                             stored_id = device_id
                         else:
                             raise Exception("Could not get Factory Reset ID from device")
+                    except Exception as e:
+                        _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
+                        raise
+                else:
+                    # If the stored factory_reset_id is different from the current device's factory_reset_id,
+                    # remove the old data and save the new one. This prevents issues when the device is reset or re-added.
+                    try:
+                        device_id = await self.read_factory_reset_id()
+                        if device_id and device_id != stored_id:
+                            _LOGGER.warning("Factory Reset ID mismatch for %s: stored=%s, device=%s. Removing old data.", self.mac_address, stored_id, device_id)
+                            await self.storage_manager.async_remove_device_data(self.mac_address)
+                            await self.write_device_info(self.mac_address, device_id)
+                            stored_id = device_id
                     except Exception as e:
                         _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
                         raise
