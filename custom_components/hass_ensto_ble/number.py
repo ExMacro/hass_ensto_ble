@@ -34,7 +34,6 @@ async def async_setup_entry(
         EnstoBoostPowerOffsetNumber(manager),
         EnstoRoomSensorCalibrationNumber(manager),
         EnstoHeatingPowerNumber(manager),
-        EnstoFloorAreaNumber(manager),
         EnstoEnergyUnitPriceNumber(manager, currency),
         EnstoVacationTempOffsetNumber(manager),
         EnstoVacationPowerOffsetNumber(manager),
@@ -46,6 +45,7 @@ async def async_setup_entry(
         entities.extend([
             EnstoFloorLimitNumber(manager, "low"),
             EnstoFloorLimitNumber(manager, "high"),
+            EnstoFloorAreaNumber(manager),
         ])
 
     async_add_entities(entities, True)

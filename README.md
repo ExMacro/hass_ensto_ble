@@ -7,48 +7,48 @@
 _Custom component to read and write data from Ensto BLE thermostats._
 
 ## Note
-- This is a development version. It's a hobby project and will be developed slowly for my own purposes. Please be patient.
-- Integration tested on Raspberry PI 4, Home Assistant OS 15.2, Supervisor 2025.05.3, Core 2025.5.3. The intergration is not guaranteed to work with other types of HA installations.
+- Integration is tested on Raspberry PI 4, Home Assistant OS 16.0, Supervisor 2025.07.1, Core 2025.7.3.
 - Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description.
-- The version v0.3.5 onwards works with multiple thermostats.
-- The version v0.2.1 onwards works with ESP32 Bluetooth proxies.
+- The integration works with multiple thermostats and ESP32 Bluetooth proxies.
+- This is a hobby project under active development. Integration may not work with all HA installation types.
 
-
-## If you have trouble pairing your thermostat
+## Troubleshooting
+### Pairing Issues
 Some users have needed additional pairing in the terminal to establish a Bluetooth connection.
 
 - In Home Assistant terminal, run bluetoothctl. You can continue entering commands while Bluetooth messages appear on screen.
+- If you added the thermostat to HA before and then paired it to another device, you will probably have to remove XX:XX:XX:XX:XX:XX first
 - First type trust XX:XX:XX:XX:XX:XX (replace with your device's MAC address)
 - Second type pair XX:XX:XX:XX:XX:XX (replace with your device's MAC address)
 - Set your Ensto BLE thermostat to pairing mode (blue light blinking)
 - Proceed adding the Ensto BLE thermostat in Home Assistant
 
-### HACS installation
+### Time Sync Issues
+Common cause for the thermostats to display incorrect internal time (e.g., years in the future or past) is weak or dead RTC backup battery.
+- See the device installation manual on replacing the CR1225 battery
+- Set correct time using the set_device_time service in Developer Tools after battery replacement
+
+## Installation
+## HACS (Recommended)
 1. Search the repository `HASS Ensto BLE` from HACS default repositories
 2. Download the latest release to HACS
 3. Restart HA
 4. Go to Settings > Devices & services > Add Integration
 5. Search for "Hass Ensto BLE"
 
-The integration will automatically scan for Ensto BLE thermostats in pairing mode.
-
-During installation, you must choose a currency for energy calculations (only stored in the thermostat)
-
-To put your thermostat in pairing mode:
-- Hold the BLE reset button for >0.5 seconds
-- The blue LED will start blinking when pairing mode is active
-
-### Manual installation
+## Manual installation
 
 1. Navigate to your Home Assistant configuration directory (where `configuration.yaml` is located)
-2. Create a `custom_components` directory if it doesn't exist
-3. Create a directory called `hass_ensto_ble` inside `custom_components`
-4. Download all files from this repository
-5. Place the downloaded files in the `custom_components/hass_ensto_ble` directory
-6. Restart Home Assistant
-7. Go to Settings > Devices & services > Add Integration
-8. Search for "Hass Ensto BLE"
-   
+2. Create `custom_components/hass_ensto_ble` directory
+3. Download and place all repository files in the directory
+4. Restart Home Assistant
+5. Add integration via Settings > Devices & services
+
+## Setup Process
+1. Put thermostat in pairing mode (hold BLE reset button >0.5 seconds until blue LED blinks)
+2. Select your thermostat from the discovered devices list
+3. Choose currency for energy calculations (stored in thermostat)
+
 ## Supported functions
 ### Naming the Ensto BLE thermostat
 
