@@ -156,6 +156,42 @@ Changes are stored in the thermostat's memory
 
 Temperature and power offset values and date settings will automatically update in the UI.
 
+### Setting Calendar Mode
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the Calendar Mode switch
+3. Enable to activate weekly scheduling, disable for manual control
+
+When calendar mode is enabled, the thermostat follows your programmed weekly schedule instead of manual temperature settings.
+
+#### Reading Calendar Programs
+1. Navigate to Developer Tools > Actions
+2. Select service `hass_ensto_ble.get_calendar_day`
+3. Select any of your thermostat's sensor entities
+4. Enter day number (1=Monday, 7=Sunday)
+5. Click "PERFORM ACTION"
+
+#### Programming Calendar Days
+1. Navigate to Developer Tools > Actions
+2. Select service `hass_ensto_ble.set_calendar_day`
+3. Select any of your thermostat's sensor entities
+4. Configure the day and programs (up to six):
+
+```yaml
+- start_hour: 6
+  start_minute: 0
+  end_hour: 8
+  end_minute: 30
+  temp_offset: 2.0
+  power_offset: 0
+  enabled: true
+- start_hour: 17
+  start_minute: 0
+  end_hour: 22
+  end_minute: 0
+  temp_offset: 1.5
+  power_offset: 0
+  enabled: true
+```
 ### Real-time Power Consumption Monitoring
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Find the Heating Power entity and set your thermostat's actual power rating (e.g., 900W)
