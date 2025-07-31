@@ -11,7 +11,6 @@ set_device_name:
       name: Name
       description: New name for the device
       required: true
-      example: "Test Thermostat"
       selector:
         text:
 
@@ -22,3 +21,47 @@ set_device_time:
     entity:
       integration: hass_ensto_ble
       domain: sensor
+
+get_calendar_day:
+  name: Get calendar day
+  description: Read calendar programs for a specific day
+  target:
+    entity:
+      integration: hass_ensto_ble
+      domain: sensor
+  fields:
+    day:
+      name: Day
+      description: Day of week (1=Monday, 7=Sunday)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 7
+          step: 1
+          mode: box
+
+set_calendar_day:
+  name: Set calendar day
+  description: Write calendar programs for a specific day
+  target:
+    entity:
+      integration: hass_ensto_ble
+      domain: sensor
+  fields:
+    day:
+      name: Day
+      description: Day of week (1=Monday, 7=Sunday)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 7
+          step: 1
+          mode: box
+    programs:
+      name: Programs
+      description: List of up to 6 daily programs in YAML format
+      required: true
+      selector:
+        object:

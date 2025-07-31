@@ -28,6 +28,7 @@ async def async_setup_entry(
         EnstoAdaptiveTempSwitch(manager),
         EnstoDaylightSavingSwitch(manager),
         EnstoVacationModeSwitch(manager),
+        EnstoCalendarModeSwitch(manager),
     ]
     async_add_entities(switches, True)
 
@@ -299,3 +300,48 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
                 self._is_on = settings.get('enabled', False)
         except Exception as e:
             _LOGGER.error(f"Error updating vacation mode state: {e}")
+
+class EnstoCalendarModeSwitch(EnstoBaseEntity, SwitchEntity):
+    """Representation of Ensto Calendar Mode switch."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+
+    def __init__(self, manager):
+        """Initialize the switch."""
+        super().__init__(manager)
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Calendar Mode"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_calendar_mode_switch"
+        self._attr_icon = "mdi:calendar-clock"
+        self._is_on = False
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if calendar mode is active."""
+        return self._is_on
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn calendar mode on."""
+        try:
+            success = await self._manager.write_calendar_mode(True)
+            if success:
+                self._is_on = True
+        except Exception as e:
+            _LOGGER.error("Failed to enable calendar mode: %s", e)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn calendar mode off."""
+        try:
+            success = await self._manager.write_calendar_mode(False)
+            if success:
+                self._is_on = False
+        except Exception as e:
+            _LOGGER.error("Failed to disable calendar mode: %s", e)
+
+    async def async_update(self) -> None:
+        """Update calendar mode state."""
+        try:
+            result = await self._manager.read_calendar_mode()
+            if result:
+                self._is_on = result['enabled']
+        except Exception as e:
+            _LOGGER.error("Error updating calendar mode state: %s", e)
