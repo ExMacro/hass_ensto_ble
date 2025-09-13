@@ -101,10 +101,10 @@ class EnstoThermostatManager:
                 if not device:
                     raise Exception(f"Device {self.mac_address} not found")
 
-                _LOGGER.debug("Connecting to device %s", self.mac_address)
-                self.client = BleakClient(device)
-                await self.client.connect(timeout=10.0)
-                _LOGGER.debug("Connected to device %s", self.mac_address)
+                # Use bleak-retry-connector
+                _LOGGER.debug("Device [%s]: establishing connection", self.mac_address)
+                self.client = await establish_connection(BleakClientWithServiceCache, device, self.mac_address)
+                _LOGGER.debug("Device [%s]: connection established", self.mac_address)
 
                 # always pair to set encryption
                 _LOGGER.debug("Pairing with device %s", self.mac_address)
