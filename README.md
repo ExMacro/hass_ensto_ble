@@ -7,10 +7,11 @@
 _Custom component to read and write data from Ensto BLE thermostats._
 
 ## Note
-- Integration is tested on Raspberry PI 4, Home Assistant OS 16.2, Supervisor 2025.09.0, Core 2025.9.2.
+- Integration is tested on Raspberry PI 4, Home Assistant OS 16.3, Supervisor 2025.11.1, Core 2025.11.1.
 - Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description.
 - The integration works with multiple thermostats and ESP32 Bluetooth proxies.
-- This is a hobby project under active development. Integration may not work with all HA installation types.
+- Integration is developed and tested only with Home Assistant OS. Other HA installation types are not guaranteed to work.
+- This is a hobby project under development.
 
 ## Troubleshooting
 ### Pairing Issues
@@ -28,6 +29,14 @@ Common cause for the thermostats to display incorrect internal time (e.g., years
 - See the device installation manual on replacing the CR1225 battery
 - Set correct time using the set_device_time service in Developer Tools after battery replacement
 
+## Known Limitations
+
+### Device Name Writing (Home Assistant OS 16.2+)
+Device name cannot be changed anymore via Home Assistant on systems using BlueZ 5.82 or newer (Home Assistant OS 16.2+).
+- BlueZ 5.82+ enforces strict Bluetooth standards and blocks client-side writes to GAP (Generic Access Profile) characteristics, including UUID 2A00 (Device Name).
+- Workaround is to use Ensto's official mobile application (iOS/Android) to change the device name. 
+The integraion reads and displayes the device name in Home Assistant.
+
 ## Installation
 ## HACS (Recommended)
 1. Search the repository `HASS Ensto BLE` from HACS default repositories
@@ -37,7 +46,6 @@ Common cause for the thermostats to display incorrect internal time (e.g., years
 5. Search for "Hass Ensto BLE"
 
 ## Manual installation
-
 1. Navigate to your Home Assistant configuration directory (where `configuration.yaml` is located)
 2. Create `custom_components/hass_ensto_ble` directory
 3. Download and place all repository files in the directory
@@ -50,7 +58,6 @@ Common cause for the thermostats to display incorrect internal time (e.g., years
 3. Choose currency for energy calculations (stored in thermostat)
 
 ## Add thermostat to UI
-
 1. Settings > Devices & services > Helpers > Create helper
 2. Generic thermostat
     - Temperature sensor: Select floor or room temperature sensor which ever you prefer
@@ -60,21 +67,6 @@ Common cause for the thermostats to display incorrect internal time (e.g., years
 4. Add Thermostat card to UI using this new helper climate-entity
 
 ## Supported functions
-### Naming the Ensto BLE thermostat
-
-1. Navigate to Developer Tools > Services
-2. Select service `hass_ensto_ble.set_device_name`
-3. Select a thermostat name entity if you have multiple thermostats
-4. Enter a new name in the Name field (maximum 25 characters)
-5. Click "PERFORM ACTION"
-
-The new name will be visible:
-- In the Devices & services > Integrations page
-- In the device card when you click on the device
-- Please note that entity names for the device are not renamed
-
-The name is stored directly in the thermostat's memory and persists through restarts.
-
 ### Setting heating mode
 1. Navigate to Settings > Devices & services > [Your thermostat]
 2. Select a mode from the drop down menu.
