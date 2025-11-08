@@ -27,15 +27,10 @@ _LOGGER = logging.getLogger(__name__)
 # List of supported platforms for this integration
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT, Platform.NUMBER, Platform.DATETIME]
 
-# Set device name service
-SERVICE_SET_NAME = "set_device_name"
+# Set services
 SERVICE_SET_TIME = "set_device_time"
 SERVICE_GET_CALENDAR_DAY = "get_calendar_day"
 SERVICE_SET_CALENDAR_DAY = "set_calendar_day"
-
-SERVICE_SET_NAME_SCHEMA = vol.Schema({
-    vol.Required("name"): str,
-})
 
 GET_DAY_SCHEMA = vol.Schema({
     vol.Required("day"): vol.Range(min=1, max=7)
@@ -88,42 +83,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
         except Exception as e:
             _LOGGER.warning("Failed to initialize device currency: %s", e)
-
-        async def set_device_name(call: ServiceCall) -> None:
-            """Set device name service."""
-            # Extract the target entity from service call data
-            target_entity = call.data.get("entity_id")
-                
-            if not target_entity:
-                _LOGGER.error("No target entity specified")
-                return
-
-            # We only process first entity if multiple are provided
-            if isinstance(target_entity, list):
-                entity_id = target_entity[0]
-            else:
-                entity_id = target_entity
-
-            # Get the entity registry entry for the target
-            entity_registry = er.async_get(hass)
-            entity_entry = entity_registry.async_get(entity_id)
-            
-            # Get config entry id from entity entry
-            config_entry_id = entity_entry.config_entry_id
-            
-            # Get the correct config entry and thermostat manager instance for this device
-            config_entry = hass.config_entries.async_get_entry(config_entry_id)
-            manager = hass.data[DOMAIN][config_entry_id]
-
-            # Update device name
-            new_name = call.data["name"]
-            if await manager.write_device_name(new_name):
-                manager.device_name = new_name
-                # Update config entry title
-                title = f"{manager.model_number or 'Unknown Model'} {new_name}"
-                hass.config_entries.async_update_entry(config_entry, title=title)
-                # Force update device info
-                async_dispatcher_send(hass, f"{DOMAIN}_update")
 
         async def set_device_time(call: ServiceCall) -> None:
             """Set device time to match Home Assistant time."""
@@ -284,13 +243,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.error("Action [Set Calendar Day %d] for [%s]: failed to write", day, manager.mac_address)
 
         # Only register services if they don't already exist
-        if not hass.services.has_service(DOMAIN, SERVICE_SET_NAME):
-            hass.services.async_register(
-                DOMAIN,
-                SERVICE_SET_NAME,
-                set_device_name,
-            )
-
         if not hass.services.has_service(DOMAIN, SERVICE_SET_TIME):
             hass.services.async_register(
                 DOMAIN,
@@ -333,7 +285,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Only remove services if this is the last config entry for the domain
     if not hass.data[DOMAIN]:
-        hass.services.async_remove(DOMAIN, SERVICE_SET_NAME)
         hass.services.async_remove(DOMAIN, SERVICE_SET_TIME)
         hass.services.async_remove(DOMAIN, SERVICE_GET_CALENDAR_DAY)
         hass.services.async_remove(DOMAIN, SERVICE_SET_CALENDAR_DAY)

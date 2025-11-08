@@ -618,36 +618,6 @@ class EnstoThermostatManager:
             _LOGGER.error(f"Failed to read device name: {e}")
             return None
 
-    async def write_device_name(self, new_name: str) -> bool:
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-
-            # Read current data
-            current_data = await self.client.read_gatt_char(DEVICE_NAME_UUID)
-
-            # Create a 60-byte array and copy the first byte from the current data.
-            name_bytes = bytearray([current_data[0]] + [0] * 59)
-
-            # Set the new name encoded in UTF-8 starting from the second byte.
-            encoded_name = new_name.encode('utf-8')
-            name_bytes[1:len(encoded_name)+1] = encoded_name
-
-            await self.client.write_gatt_char(DEVICE_NAME_UUID, name_bytes, response=True)
-
-            _LOGGER.info(f"Successfully wrote device name: {new_name}")
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing device name: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error(f"Failed to write device name: {str(e)}")
-            return False
-
     async def write_split_characteristic(self, characteristic_uuid: str, data: bytes) -> bool:
         """
         Write BLE characteristic data that needs to be split into multiple packets.
