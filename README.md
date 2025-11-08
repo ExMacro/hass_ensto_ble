@@ -49,6 +49,16 @@ Common cause for the thermostats to display incorrect internal time (e.g., years
 2. Select your thermostat from the discovered devices list
 3. Choose currency for energy calculations (stored in thermostat)
 
+## Add thermostat to UI
+
+1. Settings > Devices & services > Helpers > Create helper
+2. Generic thermostat
+    - Temperature sensor: Select floor or room temperature sensor which ever you prefer
+    - Actuator switch: "Boost Mode" -switch
+    - Cold/Hot tolerance: "0.5" is fine
+3. Next > Submit > Finish
+4. Add Thermostat card to UI using this new helper climate-entity
+
 ## Supported functions
 ### Naming the Ensto BLE thermostat
 
