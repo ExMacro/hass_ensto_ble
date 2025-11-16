@@ -10,6 +10,9 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     UnitOfTemperature,
     UnitOfPower,
+    UnitOfEnergy,
+    STATE_UNKNOWN,
+    STATE_UNAVAILABLE,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -18,6 +21,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 from homeassistant.components.datetime import DateTimeEntity
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers import entity_registry
 
 
 from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, SIGNAL_DATETIME_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
@@ -103,6 +108,7 @@ async def async_setup_entry(
             EnstoPowerConsumptionSensor(manager),
             EnstoNameSensor(manager),
             EnstoCurrentPowerSensor(manager),
+            EnstoEnergySensor(manager),
         ])
 
         # Add floor sensor only if value exists and is non-zero
@@ -415,3 +421,80 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
                 self._attr_native_value = None
         else:
             self._attr_native_value = None
+
+class EnstoEnergySensor(EnstoBaseEntity, SensorEntity, RestoreEntity):
+    """Energy consumption sensor (kWh) calculated from Current Power sensor."""
+    
+    _attr_scan_interval = SCAN_INTERVAL
+    
+    def __init__(self, manager):
+        """Initialize the energy sensor."""
+        super().__init__(manager)
+
+        # Set sensor properties for Home Assistant energy integration
+        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Energy Consumption"
+        self._attr_unique_id = f"ensto_{self._manager.mac_address}_energy_consumption"
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        if self._attr_native_value is None:
+            self._attr_native_value = 0.0
+
+        # Initialize internal state tracking
+        self._power_entity_id = None
+        self._last_time = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous state and find linked power sensor."""
+        await super().async_added_to_hass()
+
+        # Restore energy value
+        old_state = await self.async_get_last_state()
+        if old_state and old_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            try:
+                self._attr_native_value = float(old_state.state)
+            except ValueError:
+                _LOGGER.warning(
+                    "Could not restore energy value for %s: invalid state %s",
+                    self._attr_name, 
+                    old_state.state
+                )
+
+        # Find entity_id of the linked power sensor by unique_id using entity registry
+        registry = entity_registry.async_get(self.hass)
+        target_unique_id = f"ensto_{self._manager.mac_address}_current_power"
+
+        for entry in registry.entities.values():
+            if entry.unique_id == target_unique_id:
+                self._power_entity_id = entry.entity_id
+                _LOGGER.debug(
+                    "Linked power sensor found via registry: %s",
+                    self._power_entity_id
+                )
+                break
+
+    async def async_update(self) -> None:
+        """Update the current energy consumption value."""
+        try:
+            now = dt_util.utcnow()
+
+            if not self._power_entity_id:
+                return
+
+            state = self.hass.states.get(self._power_entity_id)
+
+            if state is not None and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                try:
+                    current_power = float(state.state)
+                except ValueError:
+                    current_power = 0.0
+
+                if self._last_time is not None:
+                    time_diff = (now - self._last_time).total_seconds() / 3600.0
+                    energy_used = (current_power * time_diff) / 1000.0
+                    self._attr_native_value += energy_used
+            
+            self._last_time = now
+
+        except Exception as e:
+            _LOGGER.error("Error updating energy sensor for [%s]: %s", self._manager.mac_address, e)
