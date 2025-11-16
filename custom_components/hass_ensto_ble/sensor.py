@@ -20,10 +20,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
-from homeassistant.components.datetime import DateTimeEntity
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry
-
 
 from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, SIGNAL_DATETIME_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
@@ -209,7 +207,7 @@ class EnstoNumberSensor(EnstoBaseSensor):
                 alarm_code = self._last_parsed_data.get(self._data_key, 0)
 
                 if not active_alarms:
-                    return f"No active errors"
+                    return "No active errors"
                 return f"Error {alarm_code}: {', '.join(active_alarms)}"
             except Exception as e:
                 _LOGGER.error("Error formatting alarm status: %s", e)

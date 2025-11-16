@@ -125,9 +125,6 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
        """Change floor sensor type."""
        try:
            if option in FLOOR_SENSOR_CONFIG:
-               # Read current configuration first
-               current_config = await self._manager.client.read_gatt_char(FLOOR_SENSOR_TYPE_UUID)
-
                params = FLOOR_SENSOR_CONFIG[option]
                
                # Create new configuration

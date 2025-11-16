@@ -1,6 +1,6 @@
 """Support for Ensto BLE datetime entities."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from homeassistant.components.datetime import DateTimeEntity
 from homeassistant.helpers.entity import EntityCategory
@@ -8,7 +8,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.util import dt as dt_util
 from asyncio import sleep
 
 from .const import DOMAIN, SIGNAL_DATETIME_UPDATE

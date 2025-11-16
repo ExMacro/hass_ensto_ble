@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant
 from .storage_manager import EnstoStorageManager
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from calendar import monthrange
 from homeassistant.util import dt as dt_util
 from .data_coordinator import EnstoRealTimeCoordinator
 
@@ -194,7 +193,7 @@ class EnstoThermostatManager:
                     _LOGGER.debug(f"Device {discovery_info.name} address {discovery_info.address} is NOT in pairing mode")
 
             except Exception as e:
-                _LOGGER.error(f"Error parsing manufacturer data: %s", e)
+                _LOGGER.error("Error parsing manufacturer data: %s", e)
                 
         return pairing_devices
 
@@ -628,7 +627,7 @@ class EnstoThermostatManager:
             # Get MTU size and calculate max chunk size
             mtu_size = self.client.mtu_size
             _LOGGER.debug(f"Current MTU size: {mtu_size}")
-            max_chunk_size = mtu_size - 3  # Reserve 3 bytes for ATT header
+            mtu_size - 3  # Reserve 3 bytes for ATT header
             
             # Calculate chunk size to ensure at least 2 packets
             chunk_size = len(data) // 2 + (len(data) % 2)  # Force split into two chunks

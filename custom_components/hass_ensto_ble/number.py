@@ -12,7 +12,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL, CURRENCY_MAP, CURRENCY_SYMBOLS
+from .const import DOMAIN, SCAN_INTERVAL, CURRENCY_SYMBOLS
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 
 _LOGGER = logging.getLogger(__name__)

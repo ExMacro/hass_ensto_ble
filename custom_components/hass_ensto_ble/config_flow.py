@@ -88,6 +88,7 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try: 
                 await self._manager.ensure_connection()
             except Exception as e:
+                _LOGGER.error("Action connect for [%s]: %s", self._mac_address, e)
                 return self.async_abort(
                     reason="Connection and authentication with the device failed. Please try again."
                 )
