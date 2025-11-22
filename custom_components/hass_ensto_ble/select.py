@@ -5,6 +5,7 @@ from typing import Optional
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
@@ -38,7 +39,7 @@ async def async_setup_entry(
 
 class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
     """Representation of Ensto Heating Mode select.
-    
+
     Allows selection of heating modes:
     - Floor: Floor sensor based heating (ECO16 only)
     - Room: Room sensor based heating
@@ -48,12 +49,13 @@ class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
     """
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the select."""
         super().__init__(manager)  # Call parent class __init__
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Heating Mode"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_heating_mode_select"
+        self._attr_name = "Heating Mode"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_heating_mode_select"
         self._current_mode = None
         self._available_modes = None
 
@@ -103,12 +105,13 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
     """Representation of Ensto Floor Sensor Type select."""
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the select."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Sensor Type"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_sensor_select"
+        self._attr_name = "Floor Sensor Type"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_sensor_select"
         self._current_type = None
 
     @property
@@ -162,8 +165,6 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
                 # Parse all values
                 sensor_type = result[0]
                 sensor_missing_limit = int.from_bytes(result[1:3], byteorder='little')
-                sensor_b_value = int.from_bytes(result[3:5], byteorder='little')
-                pull_up_resistor = int.from_bytes(result[5:7], byteorder='little')
                 sensor_broken_limit = int.from_bytes(result[7:9], byteorder='little')
                 resistance_25c = int.from_bytes(result[9:11], byteorder='little')
                 offset = int.from_bytes(result[11:13], byteorder='little', signed=True) / 10  # Convert to actual decimal value

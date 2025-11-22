@@ -5,6 +5,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers import device_registry as dr
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 
@@ -38,12 +39,13 @@ class EnstoBoostSwitch(EnstoBaseEntity, SwitchEntity):
     duration and temperature offset."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)   # Call parent class __init__
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Mode"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_switch"
+        self._attr_name = "Boost Mode"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_switch"
         self._is_on = False
         self._boost_settings = None
 
@@ -98,12 +100,13 @@ class EnstoAdaptiveTempSwitch(EnstoBaseEntity, SwitchEntity):
     """Representation of Ensto Adaptive Temperature Control switch."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)  # Call parent class __init__
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Adaptive Temperature Control"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_adaptive_temp_switch"
+        self._attr_name = "Adaptive Temperature Control"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_adaptive_temp_switch"
         self._is_on = False
 
     @property
@@ -134,12 +137,13 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
     """Representation of Ensto Daylight Saving switch."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Daylight Saving"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_daylight_saving_switch"
+        self._attr_name = "Daylight Saving"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_daylight_saving_switch"
         self._is_on = False
         self._additional_info = None
 
@@ -218,12 +222,13 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
     """Representation of Ensto Vacation Mode switch."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Vacation Mode"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_vacation_mode_switch"
+        self._attr_name = "Vacation Mode"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_mode_switch"
         self._attr_icon = "mdi:palm-tree"
         self._is_on = False
 
@@ -304,12 +309,13 @@ class EnstoCalendarModeSwitch(EnstoBaseEntity, SwitchEntity):
     """Representation of Ensto Calendar Mode switch."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Calendar Mode"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_calendar_mode_switch"
+        self._attr_name = "Calendar Mode"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_calendar_mode_switch"
         self._attr_icon = "mdi:calendar-clock"
         self._is_on = False
 

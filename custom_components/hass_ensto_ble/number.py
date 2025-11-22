@@ -9,6 +9,7 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers import device_registry as dr
 from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
@@ -51,113 +52,116 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 class EnstoBoostDurationNumber(EnstoBaseEntity, NumberEntity):
-   """Number entity for controlling boost duration."""
+    """Number entity for controlling boost duration."""
    
-   _attr_scan_interval = SCAN_INTERVAL
+    _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
-   def __init__(self, manager):
-       super().__init__(manager)
-       self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Duration"
-       self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_duration"
-       self._attr_native_min_value = 0
-       self._attr_native_max_value = 180
-       self._attr_native_step = 5
-       self._attr_native_unit_of_measurement = "min"
-       self._attr_mode = "box"
-       self._attr_native_value = None
+    def __init__(self, manager):
+        super().__init__(manager)
+        self._attr_name = "Boost Duration"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_duration"
+        self._attr_native_min_value = 0
+        self._attr_native_max_value = 180
+        self._attr_native_step = 5
+        self._attr_native_unit_of_measurement = "min"
+        self._attr_mode = "box"
+        self._attr_native_value = None
 
-   async def async_set_native_value(self, value: float) -> None:
-       """Update the boost duration."""
-       try:
-           settings = await self._manager.read_boost()
-           if settings:
-               await self._manager.write_boost(
-                   enabled=settings['enabled'],
-                   offset_degrees=settings['offset_degrees'],
-                   offset_percentage=settings['offset_percentage'],
-                   duration_minutes=int(value)
-               )
-               self._attr_native_value = value
-       except Exception as e:
-           _LOGGER.error("Failed to set boost duration: %s", e)
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the boost duration."""
+        try:
+            settings = await self._manager.read_boost()
+            if settings:
+                await self._manager.write_boost(
+                    enabled=settings['enabled'],
+                    offset_degrees=settings['offset_degrees'],
+                    offset_percentage=settings['offset_percentage'],
+                    duration_minutes=int(value)
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set boost duration: %s", e)
 
-   async def async_update(self) -> None:
-       """Fetch new state data for the number."""
-       try:
-           settings = await self._manager.read_boost()
-           if settings:
-               self._attr_native_value = settings['setpoint_minutes']
-       except Exception as e:
-           _LOGGER.error("Error updating boost duration: %s", e)
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            settings = await self._manager.read_boost()
+            if settings:
+                self._attr_native_value = settings['setpoint_minutes']
+        except Exception as e:
+            _LOGGER.error("Error updating boost duration: %s", e)
 
 class EnstoBoostOffsetNumber(EnstoBaseEntity, NumberEntity):
-   """Number entity for controlling boost temperature offset."""
+    """Number entity for controlling boost temperature offset."""
 
-   _attr_scan_interval = SCAN_INTERVAL
+    _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
-   def __init__(self, manager):
-       super().__init__(manager)
-       self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Temperature Offset"
-       self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_temp_offset"
-       self._attr_native_min_value = -20
-       self._attr_native_max_value = 20
-       self._attr_native_step = 0.5
-       self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-       self._attr_device_class = NumberDeviceClass.TEMPERATURE
-       self._attr_mode = "box"
-       self._attr_native_value = None
-       self._current_mode = None
+    def __init__(self, manager):
+        super().__init__(manager)
+        self._attr_name = "Boost Temperature Offset"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_temp_offset"
+        self._attr_native_min_value = -20
+        self._attr_native_max_value = 20
+        self._attr_native_step = 0.5
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = NumberDeviceClass.TEMPERATURE
+        self._attr_mode = "box"
+        self._attr_native_value = None
+        self._current_mode = None
 
-   @property
-   def available(self) -> bool:
-       """Return if entity is available.
-       
-       Entity is available in all heating modes except Power mode (mode 4).
-       """
-       return self._current_mode != 4
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+        
+        Entity is available in all heating modes except Power mode (mode 4).
+        """
+        return self._current_mode != 4
 
-   async def async_set_native_value(self, value: float) -> None:
-       """Update the boost temperature offset."""
-       try:
-           settings = await self._manager.read_boost()
-           if settings:
-               await self._manager.write_boost(
-                   enabled=settings['enabled'],
-                   offset_degrees=value,
-                   offset_percentage=settings['offset_percentage'],
-                   duration_minutes=settings['setpoint_minutes']
-               )
-               self._attr_native_value = value
-       except Exception as e:
-           _LOGGER.error("Failed to set boost temperature offset: %s", e)
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the boost temperature offset."""
+        try:
+            settings = await self._manager.read_boost()
+            if settings:
+                await self._manager.write_boost(
+                    enabled=settings['enabled'],
+                    offset_degrees=value,
+                    offset_percentage=settings['offset_percentage'],
+                    duration_minutes=settings['setpoint_minutes']
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set boost temperature offset: %s", e)
 
-   async def async_update(self) -> None:
-      """Fetch new state data for the number."""
-      try:
-          mode_result = await self._manager.read_heating_mode()
-          if mode_result:
-              self._current_mode = mode_result['mode_number']
-          
-          settings = await self._manager.read_boost()
-          if settings:
-              self._attr_native_value = settings['offset_degrees']
-      except Exception as e:
-          _LOGGER.error("Error updating boost temperature offset: %s", e)
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            mode_result = await self._manager.read_heating_mode()
+            if mode_result:
+                self._current_mode = mode_result['mode_number']
+            
+            settings = await self._manager.read_boost()
+            if settings:
+                self._attr_native_value = settings['offset_degrees']
+        except Exception as e:
+            _LOGGER.error("Error updating boost temperature offset: %s", e)
 
 class EnstoBoostPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for controlling boost power offset percentage.
-    
+
     This entity is only visible when heating mode is set to Power (mode 4).
     It allows adjusting boost power percentage from -100% to 100%.
     """
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Power Offset"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_boost_power_offset"
+        self._attr_name = "Boost Power Offset"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_power_offset"
         self._attr_native_min_value = -100
         self._attr_native_max_value = 100
         self._attr_native_step = 1
@@ -214,6 +218,7 @@ class EnstoFloorLimitNumber(EnstoBaseEntity, NumberEntity):
     heating mode is set to combination (mode 3).
     """
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager, limit_type):
         """Initialize the number control."""
@@ -229,13 +234,13 @@ class EnstoFloorLimitNumber(EnstoBaseEntity, NumberEntity):
         
         # Set limits based on type
         if limit_type == "low":
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Temperature Min"
-            self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_temp_min"
+            self._attr_name = "Floor Temperature Min"
+            self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_temp_min"
             self._attr_native_min_value = 5  # Minimum allowed
             self._attr_native_max_value = 42  # Must be 8 degrees less than absolute max 50
         else:
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Temperature Max"
-            self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_temp_max"
+            self._attr_name = "Floor Temperature Max"
+            self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_temp_max"
             self._attr_native_min_value = 13  # Must be 8 degrees more than absolute min 5
             self._attr_native_max_value = 50  # Maximum allowed
 
@@ -276,12 +281,13 @@ class EnstoRoomSensorCalibrationNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for room sensor calibration."""
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Room Sensor Calibration"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_room_sensor_calibration"
+        self._attr_name = "Room Sensor Calibration"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_room_sensor_calibration"
         self._attr_native_min_value = -5.0
         self._attr_native_max_value = 5.0
         self._attr_native_step = 0.1
@@ -310,16 +316,15 @@ class EnstoRoomSensorCalibrationNumber(EnstoBaseEntity, NumberEntity):
 
 class EnstoHeatingPowerNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for controlling heating power."""
-    
+
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        # Set a descriptive name using device name or MAC address
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Heating Power"
-        # Create a unique identifier for this entity
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_heating_power"
+        self._attr_name = "Heating Power"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_heating_power"
         
         # Set value constraints for heating power
         self._attr_native_min_value = 0
@@ -353,14 +358,13 @@ class EnstoFloorAreaNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for controlling floor area."""
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        # Set a descriptive name using device name or MAC address
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Area"
-        # Create a unique identifier for this entity
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_floor_area"
+        self._attr_name = "Floor Area"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_area"
         
         # Set value constraints for floor area
         self._attr_native_min_value = 0
@@ -392,14 +396,15 @@ class EnstoFloorAreaNumber(EnstoBaseEntity, NumberEntity):
 
 class EnstoEnergyUnitPriceNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for controlling energy unit price."""
-    
+
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager, currency: int):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Energy Unit Price"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_energy_unit_price"
+        self._attr_name = "Energy Unit Price"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_energy_unit_price"
         self._attr_native_min_value = 0
         self._attr_native_max_value = 655.35
         self._attr_native_step = 0.01
@@ -436,12 +441,13 @@ class EnstoVacationTempOffsetNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for vacation mode temperature offset in celsius."""
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Vacation Temperature Offset"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_vacation_temp_offset"
+        self._attr_name = "Vacation Temperature Offset"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_temp_offset"
         self._attr_native_min_value = -20.0
         self._attr_native_max_value = 20.0
         self._attr_native_step = 0.5
@@ -496,12 +502,13 @@ class EnstoVacationPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
     """Number entity for vacation mode power offset percentage."""
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Vacation Power Offset"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_vacation_power_offset"
+        self._attr_name = "Vacation Power Offset"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_power_offset"
         self._attr_native_min_value = -100
         self._attr_native_max_value = 100
         self._attr_native_step = 1

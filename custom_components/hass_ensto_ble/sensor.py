@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers import device_registry as dr
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -33,6 +34,7 @@ UNIT_MINUTES = "min"
 class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
     """Base class for Ensto sensors."""
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager, sensor_type):
         """Initialize the DateTime sensor for Ensto thermostat."""
@@ -119,23 +121,27 @@ class EnstoTemperatureSensor(EnstoBaseSensor):
     """Temperature sensor for Ensto thermostat."""
 
     def __init__(self, manager, sensor_type):
-        """Initialize the sensor."""
+        """Initialize the temperature sensor."""
+
         super().__init__(manager, sensor_type)
+        
+        # Set common attributes for all temperature sensors
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         
+        # Set sensor-specific attributes based on type
         if sensor_type == "room":
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Room Temperature"
+            self._attr_name = "Room Temperature"
             self._data_key = "room_temperature"
         elif sensor_type == "floor":
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Floor Temperature"
+            self._attr_name = "Floor Temperature"
             self._data_key = "floor_temperature"
-        else:  # target
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Target Temperature"
+        else:
+            self._attr_name = "Target Temperature"
             self._data_key = "target_temperature"
-            
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}_temp"
+
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_temp"
 
 class EnstoStateSensor(EnstoBaseSensor):
     """State sensor for Ensto thermostat."""
@@ -145,13 +151,13 @@ class EnstoStateSensor(EnstoBaseSensor):
         super().__init__(manager, sensor_type)
         
         if sensor_type == "relay":
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Relay State"
+            self._attr_name = "Relay State"
             self._data_key = "relay_active"
-        else:  # boost
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost State"
+        else:
+            self._attr_name = "Boost State"
             self._data_key = "boost_enabled"
-            
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}_state"
+
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_state"
 
 class EnstoModeSensor(EnstoBaseSensor):
     """Mode sensor for Ensto thermostat."""
@@ -161,13 +167,13 @@ class EnstoModeSensor(EnstoBaseSensor):
         super().__init__(manager, sensor_type)
         
         if sensor_type == "active":
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Active Mode"
+            self._attr_name = "Active Mode"
             self._data_key = "active_mode"
-        else:  # heating
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Heating Mode"
+        else:
+            self._attr_name = "Heating Mode"
             self._data_key = "heating_mode"
-            
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}_mode"
+
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_mode"
 
 class EnstoNumberSensor(EnstoBaseSensor):
     """Number sensor for Ensto thermostat."""
@@ -179,17 +185,17 @@ class EnstoNumberSensor(EnstoBaseSensor):
         if "boost" in sensor_type:
             self._attr_native_unit_of_measurement = UNIT_MINUTES
             if sensor_type == "boost_setpoint":
-                self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Setpoint"
+                self._attr_name = "Boost Setpoint"
                 self._data_key = "boost_setpoint_minutes"
             else:  # boost_remaining
-                self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Boost Remaining"
+                self._attr_name = "Boost Remaining"
                 self._data_key = "boost_remaining_minutes"
         else:  # alarm
-            self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Alarm Status"
+            self._attr_name = "Alarm Status"
             self._data_key = "alarm_code"
             self._active_alarms_key = "active_alarms"
             
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_{sensor_type}"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}"
 
     @property
     def native_value(self) -> str:
@@ -217,14 +223,13 @@ class EnstoNumberSensor(EnstoBaseSensor):
 
 class EnstoDateTimeSensor(EnstoBaseSensor):
     """DateTime sensor for Ensto thermostat."""
-    
+
     def __init__(self, manager):
         """Initialize the sensor."""
         super().__init__(manager, "datetime")
-        # Set the name using device name if available, otherwise use MAC address
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Date and Time"
+        self._attr_name = "Date and Time"
         # Create a unique ID for the sensor using MAC address
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_datetime"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_datetime"
         self._attr_native_value = None
         # Track if alert is currently shown
         self._alert_shown = False
@@ -314,12 +319,13 @@ class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
     """Sensor for monitoring power consumption."""
 
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the sensor."""
         super().__init__(manager)
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Power Usage"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_power_usage"
+        self._attr_name = "Power Usage"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_power_usage"
         self._attr_native_unit_of_measurement = "%"
         self._attr_device_class = SensorDeviceClass.POWER_FACTOR
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -366,8 +372,8 @@ class EnstoNameSensor(EnstoBaseSensor):
     def __init__(self, manager):
         """Initialize the sensor."""
         super().__init__(manager, "name")
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Name"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_name"
+        self._attr_name = "Name"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_name"
         self._attr_device_class = "name"  # Custom device class for targeting in services
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._data_key = "device_name"
@@ -381,14 +387,15 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
     """Current power consumption sensor showing real-time heating power usage."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
 
     def __init__(self, manager):
         """Initialize the current power sensor."""
         super().__init__(manager)
         
         # Set sensor properties for Home Assistant energy integration
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Current Power"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_current_power"
+        self._attr_name = "Current Power"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_current_power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -424,14 +431,15 @@ class EnstoEnergySensor(EnstoBaseEntity, SensorEntity, RestoreEntity):
     """Energy consumption sensor (kWh) calculated from Current Power sensor."""
     
     _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
     
     def __init__(self, manager):
         """Initialize the energy sensor."""
         super().__init__(manager)
 
         # Set sensor properties for Home Assistant energy integration
-        self._attr_name = f"{self._manager.device_name or self._manager.mac_address} Energy Consumption"
-        self._attr_unique_id = f"ensto_{self._manager.mac_address}_energy_consumption"
+        self._attr_name = "Energy Consumption"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_energy_consumption"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -460,7 +468,7 @@ class EnstoEnergySensor(EnstoBaseEntity, SensorEntity, RestoreEntity):
 
         # Find entity_id of the linked power sensor by unique_id using entity registry
         registry = entity_registry.async_get(self.hass)
-        target_unique_id = f"ensto_{self._manager.mac_address}_current_power"
+        target_unique_id = f"{dr.format_mac(self._manager.mac_address)}_current_power"
 
         for entry in registry.entities.values():
             if entry.unique_id == target_unique_id:
