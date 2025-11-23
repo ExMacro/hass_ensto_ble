@@ -44,7 +44,7 @@ class EnstoBoostSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)   # Call parent class __init__
-        self._attr_name = "Boost Mode"
+        self._attr_name = "Boost mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_switch"
         self._is_on = False
         self._boost_settings = None
@@ -105,7 +105,7 @@ class EnstoAdaptiveTempSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)  # Call parent class __init__
-        self._attr_name = "Adaptive Temperature Control"
+        self._attr_name = "Adaptive temperature control"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_adaptive_temp_switch"
         self._is_on = False
 
@@ -142,7 +142,7 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)
-        self._attr_name = "Daylight Saving"
+        self._attr_name = "Daylight saving"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_daylight_saving_switch"
         self._is_on = False
         self._additional_info = None
@@ -227,7 +227,7 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)
-        self._attr_name = "Vacation Mode"
+        self._attr_name = "Vacation mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_mode_switch"
         self._attr_icon = "mdi:palm-tree"
         self._is_on = False
@@ -314,7 +314,7 @@ class EnstoCalendarModeSwitch(EnstoBaseEntity, SwitchEntity):
     def __init__(self, manager):
         """Initialize the switch."""
         super().__init__(manager)
-        self._attr_name = "Calendar Mode"
+        self._attr_name = "Calendar mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_calendar_mode_switch"
         self._attr_icon = "mdi:calendar-clock"
         self._is_on = False

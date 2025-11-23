@@ -59,7 +59,7 @@ class EnstoBoostDurationNumber(EnstoBaseEntity, NumberEntity):
 
     def __init__(self, manager):
         super().__init__(manager)
-        self._attr_name = "Boost Duration"
+        self._attr_name = "Boost duration"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_duration"
         self._attr_native_min_value = 0
         self._attr_native_max_value = 180
@@ -100,7 +100,7 @@ class EnstoBoostOffsetNumber(EnstoBaseEntity, NumberEntity):
 
     def __init__(self, manager):
         super().__init__(manager)
-        self._attr_name = "Boost Temperature Offset"
+        self._attr_name = "Boost temperature offset"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_temp_offset"
         self._attr_native_min_value = -20
         self._attr_native_max_value = 20
@@ -160,7 +160,7 @@ class EnstoBoostPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Boost Power Offset"
+        self._attr_name = "Boost power offset"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_power_offset"
         self._attr_native_min_value = -100
         self._attr_native_max_value = 100
@@ -234,12 +234,12 @@ class EnstoFloorLimitNumber(EnstoBaseEntity, NumberEntity):
         
         # Set limits based on type
         if limit_type == "low":
-            self._attr_name = "Floor Temperature Min"
+            self._attr_name = "Floor temperature min"
             self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_temp_min"
             self._attr_native_min_value = 5  # Minimum allowed
             self._attr_native_max_value = 42  # Must be 8 degrees less than absolute max 50
         else:
-            self._attr_name = "Floor Temperature Max"
+            self._attr_name = "Floor temperature max"
             self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_temp_max"
             self._attr_native_min_value = 13  # Must be 8 degrees more than absolute min 5
             self._attr_native_max_value = 50  # Maximum allowed
@@ -286,7 +286,7 @@ class EnstoRoomSensorCalibrationNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Room Sensor Calibration"
+        self._attr_name = "Room sensor calibration"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_room_sensor_calibration"
         self._attr_native_min_value = -5.0
         self._attr_native_max_value = 5.0
@@ -323,7 +323,7 @@ class EnstoHeatingPowerNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Heating Power"
+        self._attr_name = "Heating power"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_heating_power"
         
         # Set value constraints for heating power
@@ -363,7 +363,7 @@ class EnstoFloorAreaNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Floor Area"
+        self._attr_name = "Floor area"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_area"
         
         # Set value constraints for floor area
@@ -403,7 +403,7 @@ class EnstoEnergyUnitPriceNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager, currency: int):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Energy Unit Price"
+        self._attr_name = "Energy unit price"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_energy_unit_price"
         self._attr_native_min_value = 0
         self._attr_native_max_value = 655.35
@@ -446,7 +446,7 @@ class EnstoVacationTempOffsetNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Vacation Temperature Offset"
+        self._attr_name = "Vacation temperature offset"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_temp_offset"
         self._attr_native_min_value = -20.0
         self._attr_native_max_value = 20.0
@@ -507,7 +507,7 @@ class EnstoVacationPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
     def __init__(self, manager):
         """Initialize the entity."""
         super().__init__(manager)
-        self._attr_name = "Vacation Power Offset"
+        self._attr_name = "Vacation power offset"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_power_offset"
         self._attr_native_min_value = -100
         self._attr_native_max_value = 100

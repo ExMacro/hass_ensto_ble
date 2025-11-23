@@ -54,7 +54,7 @@ class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
     def __init__(self, manager):
         """Initialize the select."""
         super().__init__(manager)  # Call parent class __init__
-        self._attr_name = "Heating Mode"
+        self._attr_name = "Heating mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_heating_mode_select"
         self._current_mode = None
         self._available_modes = None
@@ -110,7 +110,7 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
     def __init__(self, manager):
         """Initialize the select."""
         super().__init__(manager)
-        self._attr_name = "Floor Sensor Type"
+        self._attr_name = "Floor sensor type"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_floor_sensor_select"
         self._current_type = None
 

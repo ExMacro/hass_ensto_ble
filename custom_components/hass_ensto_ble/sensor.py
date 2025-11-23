@@ -132,13 +132,13 @@ class EnstoTemperatureSensor(EnstoBaseSensor):
         
         # Set sensor-specific attributes based on type
         if sensor_type == "room":
-            self._attr_name = "Room Temperature"
+            self._attr_name = "Room temperature"
             self._data_key = "room_temperature"
         elif sensor_type == "floor":
-            self._attr_name = "Floor Temperature"
+            self._attr_name = "Floor temperature"
             self._data_key = "floor_temperature"
         else:
-            self._attr_name = "Target Temperature"
+            self._attr_name = "Target temperature"
             self._data_key = "target_temperature"
 
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_temp"
@@ -151,10 +151,10 @@ class EnstoStateSensor(EnstoBaseSensor):
         super().__init__(manager, sensor_type)
         
         if sensor_type == "relay":
-            self._attr_name = "Relay State"
+            self._attr_name = "Relay state"
             self._data_key = "relay_active"
         else:
-            self._attr_name = "Boost State"
+            self._attr_name = "Boost state"
             self._data_key = "boost_enabled"
 
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_state"
@@ -167,10 +167,10 @@ class EnstoModeSensor(EnstoBaseSensor):
         super().__init__(manager, sensor_type)
         
         if sensor_type == "active":
-            self._attr_name = "Active Mode"
+            self._attr_name = "Active mode"
             self._data_key = "active_mode"
         else:
-            self._attr_name = "Heating Mode"
+            self._attr_name = "Heating mode"
             self._data_key = "heating_mode"
 
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_mode"
@@ -185,13 +185,13 @@ class EnstoNumberSensor(EnstoBaseSensor):
         if "boost" in sensor_type:
             self._attr_native_unit_of_measurement = UNIT_MINUTES
             if sensor_type == "boost_setpoint":
-                self._attr_name = "Boost Setpoint"
+                self._attr_name = "Boost setpoint"
                 self._data_key = "boost_setpoint_minutes"
             else:  # boost_remaining
-                self._attr_name = "Boost Remaining"
+                self._attr_name = "Boost remaining"
                 self._data_key = "boost_remaining_minutes"
         else:  # alarm
-            self._attr_name = "Alarm Status"
+            self._attr_name = "Alarm status"
             self._data_key = "alarm_code"
             self._active_alarms_key = "active_alarms"
             
@@ -227,7 +227,7 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
     def __init__(self, manager):
         """Initialize the sensor."""
         super().__init__(manager, "datetime")
-        self._attr_name = "Date and Time"
+        self._attr_name = "Date and time"
         # Create a unique ID for the sensor using MAC address
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_datetime"
         self._attr_native_value = None
@@ -324,7 +324,7 @@ class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
     def __init__(self, manager):
         """Initialize the sensor."""
         super().__init__(manager)
-        self._attr_name = "Power Usage"
+        self._attr_name = "Power usage"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_power_usage"
         self._attr_native_unit_of_measurement = "%"
         self._attr_device_class = SensorDeviceClass.POWER_FACTOR
@@ -394,7 +394,7 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
         super().__init__(manager)
         
         # Set sensor properties for Home Assistant energy integration
-        self._attr_name = "Current Power"
+        self._attr_name = "Current power"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_current_power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -438,7 +438,7 @@ class EnstoEnergySensor(EnstoBaseEntity, SensorEntity, RestoreEntity):
         super().__init__(manager)
 
         # Set sensor properties for Home Assistant energy integration
-        self._attr_name = "Energy Consumption"
+        self._attr_name = "Energy consumption"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_energy_consumption"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING

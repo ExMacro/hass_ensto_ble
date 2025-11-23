@@ -45,7 +45,7 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
         self._date_type = date_type
         
         # Set up entity attributes
-        self._attr_name = f"Vacation {date_type.capitalize()}"
+        self._attr_name = f"Vacation {date_type}"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_{date_type}_datetime"
         self._attr_icon = "mdi:calendar-clock"
         
