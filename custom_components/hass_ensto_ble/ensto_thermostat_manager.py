@@ -187,10 +187,10 @@ class EnstoThermostatManager:
                 service_info = bluetooth.async_last_service_info(self.hass, addr)
                 fields = service_info.manufacturer_data[MANUFACTURER_ID].decode('ascii').split(';')
                 if len(fields) >= 2 and fields[1] == "1":
-                    _LOGGER.info(f"Device {discovery_info.name} address {discovery_info.address} is in pairing mode")
+                    _LOGGER.info("Device %s address %s is in pairing mode", discovery_info.name, discovery_info.address)
                     pairing_devices[addr] = (discovery_info, adv)
                 else:
-                    _LOGGER.debug(f"Device {discovery_info.name} address {discovery_info.address} is NOT in pairing mode")
+                    _LOGGER.debug("Device %s address %s is NOT in pairing mode", discovery_info.name, discovery_info.address)
 
             except Exception as e:
                 _LOGGER.error("Error parsing manufacturer data: %s", e)
@@ -614,7 +614,7 @@ class EnstoThermostatManager:
             return None
         
         except Exception as e:
-            _LOGGER.error(f"Failed to read device name: {e}")
+            _LOGGER.error("Failed to read device name: %s", e)
             return None
 
     async def write_split_characteristic(self, characteristic_uuid: str, data: bytes) -> bool:
@@ -626,7 +626,7 @@ class EnstoThermostatManager:
         try:
             # Get MTU size and calculate max chunk size
             mtu_size = self.client.mtu_size
-            _LOGGER.debug(f"Current MTU size: {mtu_size}")
+            _LOGGER.debug("Current MTU size: %s", mtu_size)
             mtu_size - 3  # Reserve 3 bytes for ATT header
             
             # Calculate chunk size to ensure at least 2 packets
@@ -755,22 +755,22 @@ class EnstoThermostatManager:
 
             # Validate input values
             if not (0 <= year <= 9999):
-                _LOGGER.error(f"Invalid UTC year: {year}")
+                _LOGGER.error("Invalid UTC year: %s", year)
                 return False
             if not (1 <= month <= 12):
-                _LOGGER.error(f"Invalid UTC month: {month}")
+                _LOGGER.error("Invalid UTC month: %s", month)
                 return False
             if not (1 <= day <= 31):
-                _LOGGER.error(f"Invalid UTC day: {day}")
+                _LOGGER.error("Invalid UTC day: %s", day)
                 return False
             if not (0 <= hour <= 23):
-                _LOGGER.error(f"Invalid UTC hour: {hour}")
+                _LOGGER.error("Invalid UTC hour: %s", hour)
                 return False
             if not (0 <= minute <= 59):
-                _LOGGER.error(f"Invalid UTC minute: {minute}")
+                _LOGGER.error("Invalid UTC minute: %s", minute)
                 return False
             if not (0 <= second <= 59):
-                _LOGGER.error(f"Invalid UTC second: {second}")
+                _LOGGER.error("Invalid UTC second: %s", second)
                 return False
 
             _LOGGER.debug(
@@ -1278,7 +1278,7 @@ class EnstoThermostatManager:
                 return False
             
             if not (0 <= price <= 655.35):
-                _LOGGER.error(f"Price must be between 0 and 655.35: {price}")
+                _LOGGER.error("Price must be between 0 and 655.35: %s", price)
                 return False
 
             # Prepare data packet

@@ -24,7 +24,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry
 
-from .const import DOMAIN, SIGNAL_ENSTO_UPDATE, SIGNAL_DATETIME_UPDATE, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
+from .const import DOMAIN, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
-                SIGNAL_ENSTO_UPDATE.format(self._manager.mac_address),
+                f"ensto_update_{self._manager.mac_address}",
                 _update_immediately
             )
         )
@@ -245,16 +245,16 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
             self.async_on_remove(
                 async_dispatcher_connect(
                     self.hass,
-                    SIGNAL_ENSTO_UPDATE.format(self._manager.mac_address),
+                    f"ensto_update_{self._manager.mac_address}",
                     _update_immediately
                 )
             )
-            
+
             # Subscribe to datetime specific updates
             self.async_on_remove(
                 async_dispatcher_connect(
                     self.hass,
-                    SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address),
+                    f"ensto_datetime_update_{self._manager.mac_address}",
                     _update_immediately
                 )
             )

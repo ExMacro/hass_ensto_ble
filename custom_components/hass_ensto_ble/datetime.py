@@ -12,7 +12,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.config_entries import ConfigEntry
 from asyncio import sleep
 
-from .const import DOMAIN, SIGNAL_DATETIME_UPDATE
+from .const import DOMAIN
 from .base_entity import EnstoBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
-                SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address),
+                f"ensto_datetime_update_{self._manager.mac_address}",
                 self._async_handle_update
             )
         )
@@ -145,14 +145,14 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
                    self._attr_native_value = original_value
            else:
                # If write fails, revert to original value
-               _LOGGER.error(f"Failed to update vacation {self._date_type} time")
+               _LOGGER.error("Failed to update vacation %s time", self._date_type)
                self._attr_native_value = original_value
 
            # Force UI update
            self.async_write_ha_state()
                
        except Exception as e:
-           _LOGGER.error(f"Error updating vacation time: {e}")
+           _LOGGER.error("Error updating vacation time: %s", e)
            # In case of error, try to update with actual value from device
            await self.async_update()
            self.async_write_ha_state()
@@ -171,4 +171,4 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
                     self._attr_native_value = current['time_to']
                 
         except Exception as e:
-            _LOGGER.error(f"Error updating vacation {self._date_type} time: {e}")
+            _LOGGER.error("Error updating vacation %s time: %s", self._date_type, e)

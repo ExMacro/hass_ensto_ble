@@ -11,7 +11,7 @@ from homeassistant.util import dt as dt_util
 
 from datetime import datetime
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL, SIGNAL_DATETIME_UPDATE
+from .const import DOMAIN, SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -250,15 +250,15 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
                     enabled=True
                 )
                 self._is_on = True
-                
+
                 # Notify datetime entities to update
                 async_dispatcher_send(
                     self.hass,
-                    SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address)
+                    f"ensto_datetime_update_{self._manager.mac_address}"
                 )
-                
+
         except Exception as e:
-            _LOGGER.error(f"Failed to enable vacation mode: {e}")
+            _LOGGER.error("Failed to enable vacation mode: %s", e)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn vacation mode off."""
@@ -273,15 +273,15 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
                     enabled=False
                 )
                 self._is_on = False
-                
+
                 # Notify datetime entities to update
                 async_dispatcher_send(
                     self.hass,
-                    SIGNAL_DATETIME_UPDATE.format(self._manager.mac_address)
+                    f"ensto_datetime_update_{self._manager.mac_address}"
                 )
-                
+
         except Exception as e:
-            _LOGGER.error(f"Failed to disable vacation mode: {e}")
+            _LOGGER.error("Failed to disable vacation mode: %s", e)
 
     async def async_update(self) -> None:
         """Update vacation mode state."""
@@ -300,10 +300,10 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
                     local_to.strftime('%Y-%m-%d %H:%M:%S'),
                     settings.get('active', False)
                 )
-                
+
                 self._is_on = settings.get('enabled', False)
         except Exception as e:
-            _LOGGER.error(f"Error updating vacation mode state: {e}")
+            _LOGGER.error("Error updating vacation mode state: %s", e)
 
 class EnstoCalendarModeSwitch(EnstoBaseEntity, SwitchEntity):
     """Representation of Ensto Calendar Mode switch."""

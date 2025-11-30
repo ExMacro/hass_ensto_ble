@@ -7,12 +7,6 @@ DOMAIN = "hass_ensto_ble"
 # Scan interval in seconds for the number.py, sensor.py, select.py and switch.py
 SCAN_INTERVAL = timedelta(seconds=30)
 
-# Signal identifier format for device updates
-# Used with async_dispatcher_send to notify entities of state changes
-SIGNAL_ENSTO_UPDATE = "ensto_update_{}"  # Format with device ID or MAC
-
-SIGNAL_DATETIME_UPDATE = "ensto_datetime_update_{}"
-
 # Device specific constants
 MANUFACTURER_ID = 0x2806  # Ensto manufacturer ID (big endian)
 

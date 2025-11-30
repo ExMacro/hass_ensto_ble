@@ -14,7 +14,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
-    SIGNAL_DATETIME_UPDATE,
     CURRENCY_MAP,
 )
 
@@ -156,11 +155,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         timezone_offset=tz_offset
                     )
                     
-                    _LOGGER.debug("Action [Set Device Time] for [%s]: successfully set time with DST=%s, offset=%d min", 
+                    _LOGGER.debug("Action [Set Device Time] for [%s]: successfully set time with DST=%s, offset=%d min",
                                 manager.mac_address, dst_enabled, tz_offset)
-                                        
+
                     # Notify only datetime sensor to update
-                    async_dispatcher_send(hass, SIGNAL_DATETIME_UPDATE.format(manager.mac_address))
+                    async_dispatcher_send(hass, f"ensto_datetime_update_{manager.mac_address}")
                 else:
                     _LOGGER.error("Action [Set Device Time] for [%s]: failed to set time", manager.mac_address)
 
