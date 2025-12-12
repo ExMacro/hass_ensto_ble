@@ -35,6 +35,8 @@ async def async_setup_entry(
     if "ECO16" in model:
         selects.append(EnstoFloorSensorSelect(manager))
     
+    selects.append(EnstoExternalControlModeSelect(manager))
+    
     async_add_entities(selects, True)
 
 class EnstoHeatingModeSelect(EnstoBaseEntity, SelectEntity):
@@ -189,3 +191,59 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
                 
         except Exception as e:
             _LOGGER.error("Error updating floor sensor type: %s", e)
+
+class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
+    """Select entity for external control mode.
+
+    Allows selecting between:
+    - Temperature: Set absolute target temperature (mode 5)
+    - Temperature change: Set offset from normal target (mode 6)
+    """
+
+    _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
+
+    def __init__(self, manager):
+        """Initialize the select."""
+        super().__init__(manager)
+        self._attr_name = "External control mode"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_mode"
+        self._attr_icon = "mdi:thermostat"
+        self._attr_options = ["Temperature", "Temperature change"]
+        self._attr_current_option = "Temperature change"
+        self._current_settings = None
+
+    @property
+    def current_option(self) -> Optional[str]:
+        """Return current mode."""
+        return self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        """Change external control mode."""
+        try:
+            self._current_settings = await self._manager.read_force_control()
+            if self._current_settings:
+                mode = 5 if option == "Temperature" else 6
+                await self._manager.write_force_control(
+                    enabled=self._current_settings['enabled'],
+                    mode=mode,
+                    temperature=self._current_settings.get('temperature', 20.0),
+                    temperature_offset=self._current_settings.get('temperature_offset', 5.0)
+                )
+                self._attr_current_option = option
+        except Exception as e:
+            _LOGGER.error("Failed to set external control mode: %s", e)
+
+    async def async_update(self) -> None:
+        """Update external control mode."""
+        try:
+            self._current_settings = await self._manager.read_force_control()
+            if self._current_settings:
+                mode = self._current_settings.get('mode', 6)
+                if mode == 5:
+                    self._attr_current_option = "Temperature"
+                elif mode == 6:
+                    self._attr_current_option = "Temperature change"
+                # Mode 1 (off) keeps previous selection
+        except Exception as e:
+            _LOGGER.error("Error updating external control mode: %s", e)

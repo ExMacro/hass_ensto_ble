@@ -38,6 +38,8 @@ async def async_setup_entry(
         EnstoEnergyUnitPriceNumber(manager, currency),
         EnstoVacationTempOffsetNumber(manager),
         EnstoVacationPowerOffsetNumber(manager),
+        EnstoExternalControlOffsetNumber(manager),
+        EnstoExternalControlTemperatureNumber(manager),
     ]
 
     # Add floor limit numbers only for ECO16 models
@@ -557,3 +559,97 @@ class EnstoVacationPowerOffsetNumber(EnstoBaseEntity, NumberEntity):
                 self._attr_native_value = result['offset_percentage']
         except Exception as e:
             _LOGGER.error("Error updating vacation power offset: %s", e)
+
+class EnstoExternalControlTemperatureNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for external control absolute temperature (mode 5).
+
+    Sets the target temperature when external control mode is "Temperature".
+    """
+
+    _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = "External control temperature"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_temperature"
+        self._attr_native_min_value = 5.0
+        self._attr_native_max_value = 50.0
+        self._attr_native_step = 0.5
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = NumberDeviceClass.TEMPERATURE
+        self._attr_mode = "box"
+        self._attr_native_value = 20.0
+        self._attr_icon = "mdi:thermometer"
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the external control temperature."""
+        try:
+            settings = await self._manager.read_force_control()
+            if settings:
+                await self._manager.write_force_control(
+                    enabled=settings['enabled'],
+                    mode=settings.get('mode', 5),
+                    temperature=value,
+                    temperature_offset=settings.get('temperature_offset', 5.0)
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set external control temperature: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            settings = await self._manager.read_force_control()
+            if settings:
+                self._attr_native_value = settings.get('temperature', 20.0)
+        except Exception as e:
+            _LOGGER.error("Error updating external control temperature: %s", e)
+
+class EnstoExternalControlOffsetNumber(EnstoBaseEntity, NumberEntity):
+    """Number entity for external control temperature offset (mode 6).
+
+    Sets the temperature offset when external control mode is "Temperature change".
+    """
+
+    _attr_scan_interval = SCAN_INTERVAL
+    _attr_has_entity_name = True
+
+    def __init__(self, manager):
+        """Initialize the entity."""
+        super().__init__(manager)
+        self._attr_name = "External control offset"
+        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_offset"
+        self._attr_native_min_value = -20.0
+        self._attr_native_max_value = 20.0
+        self._attr_native_step = 0.5
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = NumberDeviceClass.TEMPERATURE
+        self._attr_mode = "box"
+        self._attr_native_value = 5.0
+        self._attr_icon = "mdi:thermometer-plus"
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the external control temperature offset."""
+        try:
+            settings = await self._manager.read_force_control()
+            if settings:
+                await self._manager.write_force_control(
+                    enabled=settings['enabled'],
+                    mode=settings.get('mode', 6),
+                    temperature=settings.get('temperature', 20.0),
+                    temperature_offset=value
+                )
+                self._attr_native_value = value
+        except Exception as e:
+            _LOGGER.error("Failed to set external control offset: %s", e)
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the number."""
+        try:
+            settings = await self._manager.read_force_control()
+            if settings:
+                self._attr_native_value = settings.get('temperature_offset', 5.0)
+        except Exception as e:
+            _LOGGER.error("Error updating external control offset: %s", e)
