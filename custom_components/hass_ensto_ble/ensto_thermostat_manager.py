@@ -2005,7 +2005,7 @@ class EnstoThermostatManager:
             data = bytearray(current)
 
             # Update mode 5 temperature (byte[6-7])
-            temp_value = int(max(5.0, min(50.0, temperature)) * 10)
+            temp_value = int(max(5.0, min(35.0, temperature)) * 10)
             data[6:8] = temp_value.to_bytes(2, byteorder='little')
 
             # Update mode 6 offset (byte[8-9], signed)

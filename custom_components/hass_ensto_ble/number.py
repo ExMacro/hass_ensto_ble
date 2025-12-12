@@ -575,7 +575,7 @@ class EnstoExternalControlTemperatureNumber(EnstoBaseEntity, NumberEntity):
         self._attr_name = "External control temperature"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_temperature"
         self._attr_native_min_value = 5.0
-        self._attr_native_max_value = 50.0
+        self._attr_native_max_value = 35.0
         self._attr_native_step = 0.5
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = NumberDeviceClass.TEMPERATURE
