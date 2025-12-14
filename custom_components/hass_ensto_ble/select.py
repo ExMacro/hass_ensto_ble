@@ -210,7 +210,7 @@ class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_mode"
         self._attr_icon = "mdi:thermostat"
         self._attr_options = ["Temperature", "Temperature change"]
-        self._attr_current_option = "Temperature change"
+        self._attr_current_option = None
         self._current_settings = None
 
     @property

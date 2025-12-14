@@ -580,7 +580,7 @@ class EnstoExternalControlTemperatureNumber(EnstoBaseEntity, NumberEntity):
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = NumberDeviceClass.TEMPERATURE
         self._attr_mode = "box"
-        self._attr_native_value = 20.0
+        self._attr_native_value = None
         self._attr_icon = "mdi:thermometer"
 
     async def async_set_native_value(self, value: float) -> None:
@@ -627,7 +627,7 @@ class EnstoExternalControlOffsetNumber(EnstoBaseEntity, NumberEntity):
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = NumberDeviceClass.TEMPERATURE
         self._attr_mode = "box"
-        self._attr_native_value = 5.0
+        self._attr_native_value = None
         self._attr_icon = "mdi:thermometer-plus"
 
     async def async_set_native_value(self, value: float) -> None:
