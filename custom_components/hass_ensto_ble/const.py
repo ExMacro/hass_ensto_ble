@@ -35,6 +35,13 @@ ACTIVE_MODES = {
     3: "Vacation"
 }
 
+# External Control modes for Force Control characteristic
+EXTERNAL_CONTROL_MODES = {
+    2: "Off",
+    5: "Temperature",
+    6: "Temperature change"
+}
+
 # Heating modes for different device models
 MODE_MAP = {
     1: "Floor",        # Floor sensor based heating (ECO16 only)

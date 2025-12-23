@@ -11,7 +11,8 @@ from homeassistant.config_entries import ConfigEntry
 from .base_entity import EnstoBaseEntity
 from .const import (
     DOMAIN, SCAN_INTERVAL, FLOOR_SENSOR_TYPE_UUID,
-    FLOOR_SENSOR_CONFIG, MODE_MAP, SUPPORTED_MODES_ECO16, SUPPORTED_MODES_ELTE6
+    FLOOR_SENSOR_CONFIG, MODE_MAP, SUPPORTED_MODES_ECO16, SUPPORTED_MODES_ELTE6,
+    EXTERNAL_CONTROL_MODES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -196,6 +197,7 @@ class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
     """Select entity for external control mode.
 
     Allows selecting between:
+    - Off: External control disabled (mode 2)
     - Temperature: Set absolute target temperature (mode 5)
     - Temperature change: Set offset from normal target (mode 6)
     """
@@ -209,9 +211,8 @@ class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
         self._attr_name = "External control mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_mode"
         self._attr_icon = "mdi:thermostat"
-        self._attr_options = ["Temperature", "Temperature change"]
+        self._attr_options = list(EXTERNAL_CONTROL_MODES.values())
         self._attr_current_option = None
-        self._current_settings = None
 
     @property
     def current_option(self) -> Optional[str]:
@@ -221,14 +222,17 @@ class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change external control mode."""
         try:
-            self._current_settings = await self._manager.read_force_control()
-            if self._current_settings:
-                mode = 5 if option == "Temperature" else 6
+            current = await self._manager.read_force_control()
+            if current:
+                # Find mode number by name
+                mode = next(
+                    num for num, name in EXTERNAL_CONTROL_MODES.items() 
+                    if name == option
+                )
                 await self._manager.write_force_control(
-                    enabled=self._current_settings['enabled'],
                     mode=mode,
-                    temperature=self._current_settings.get('temperature', 20.0),
-                    temperature_offset=self._current_settings.get('temperature_offset', 5.0)
+                    temperature=current['temperature'],
+                    temperature_offset=current['temperature_offset']
                 )
                 self._attr_current_option = option
         except Exception as e:
@@ -237,13 +241,8 @@ class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
     async def async_update(self) -> None:
         """Update external control mode."""
         try:
-            self._current_settings = await self._manager.read_force_control()
-            if self._current_settings:
-                mode = self._current_settings.get('mode', 6)
-                if mode == 5:
-                    self._attr_current_option = "Temperature"
-                elif mode == 6:
-                    self._attr_current_option = "Temperature change"
-                # Mode 1 (off) keeps previous selection
+            result = await self._manager.read_force_control()
+            if result:
+                self._attr_current_option = result.get('mode_name', 'Off')
         except Exception as e:
             _LOGGER.error("Error updating external control mode: %s", e)

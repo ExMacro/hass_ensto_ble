@@ -18,6 +18,7 @@ from .const import (
     ERROR_CODES_BYTE0,
     ERROR_CODES_BYTE1,
     ACTIVE_MODES,
+    EXTERNAL_CONTROL_MODES,
     MODE_MAP,
     CURRENCY_MAP,
     CURRENCY_SYMBOLS,
@@ -1910,11 +1911,7 @@ class EnstoThermostatManager:
                 offset_raw = int.from_bytes(data[12:14], byteorder='little', signed=True)
                 temperature_offset = offset_raw / 10.0
 
-                mode_names = {
-                    1: "Off",
-                    5: "Temperature",
-                    6: "Temperature change"
-                }
+                mode_names = EXTERNAL_CONTROL_MODES
 
                 _LOGGER.debug(
                     "Read Force Control %s for %s: mode=%s, temp=%.1f°C, offset=%+.1f°C",
@@ -1924,9 +1921,9 @@ class EnstoThermostatManager:
                 )
 
                 return {
-                    'enabled': mode != 1,
+                    'enabled': mode in (5, 6),
                     'mode': mode,
-                    'mode_name': mode_names.get(mode, "Unknown"),
+                    'mode_name': EXTERNAL_CONTROL_MODES.get(mode, "Unknown"),
                     'temperature': temperature,
                     'temperature_offset': temperature_offset,
                     'data_length': len(data)
@@ -1963,7 +1960,7 @@ class EnstoThermostatManager:
             _LOGGER.error("Failed to read force control: %s", e)
             return None
 
-    async def write_force_control(self, enabled: bool, mode: int = 6, temperature: float = 20.0, temperature_offset: float = 5.0) -> bool:
+    async def write_force_control(self, mode: int, temperature: float, temperature_offset: float) -> bool:
         """Write force control / external control configuration to device.
 
         Args:
@@ -1988,7 +1985,7 @@ class EnstoThermostatManager:
             current = await self.client.read_gatt_char(FORCE_CONTROL_UUID)
             if not current:
                 _LOGGER.error(
-                    "Wrote Force Control %s for %s: could not read current settings",
+                    "Write Force Control %s for %s: could not read current settings",
                     device_name, self.mac_address
                 )
                 return False
@@ -1996,7 +1993,7 @@ class EnstoThermostatManager:
             # Check for legacy 1-byte format (old firmware)
             if len(current) < 19:
                 _LOGGER.debug(
-                    "Wrote Force Control %s for %s: device uses legacy 1-byte format, external control not supported",
+                    "Write Force Control %s for %s: device uses legacy 1-byte format, external control not supported",
                     device_name, self.mac_address
                 )
                 return False
@@ -2013,18 +2010,17 @@ class EnstoThermostatManager:
             data[12:14] = offset_value.to_bytes(2, byteorder='little', signed=True)
 
             # Set mode
-            if enabled:
-                data[17] = mode if mode in (5, 6) else 6
-            else:
-                data[17] = 0x01
+            if mode in EXTERNAL_CONTROL_MODES:
+                data[17] = mode
 
             await self.client.write_gatt_char(FORCE_CONTROL_UUID, data, response=True)
 
-            mode_names = {1: "Off", 5: "Temperature", 6: "Temperature change"}
+            mode_names = {2: "Off", 5: "Temperature", 6: "Temperature change"}
+
             _LOGGER.debug(
-                "Wrote Force Control %s for %s: enabled=%s, mode=%s, temp=%.1f°C, offset=%+.1f°C",
+                "Wrote Force Control %s for %s: mode=%s, temp=%.1f°C, offset=%+.1f°C",
                 device_name, self.mac_address,
-                enabled, mode_names.get(data[17], "Unknown"),
+                mode_names.get(data[17], "Unknown"),
                 temperature, temperature_offset
             )
 

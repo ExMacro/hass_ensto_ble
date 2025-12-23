@@ -29,7 +29,6 @@ async def async_setup_entry(
         EnstoDaylightSavingSwitch(manager),
         EnstoVacationModeSwitch(manager),
         EnstoCalendarModeSwitch(manager),
-        EnstoExternalControlSwitch(manager),
     ]
     async_add_entities(switches, True)
 
@@ -351,62 +350,3 @@ class EnstoCalendarModeSwitch(EnstoBaseEntity, SwitchEntity):
                 self._is_on = result['enabled']
         except Exception as e:
             _LOGGER.error("Error updating calendar mode state: %s", e)
-
-class EnstoExternalControlSwitch(EnstoBaseEntity, SwitchEntity):
-    """Representation of Ensto External Control switch."""
-
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
-
-    def __init__(self, manager):
-        """Initialize the switch."""
-        super().__init__(manager)
-        self._attr_name = "External control"
-        self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_external_control_switch"
-        self._attr_icon = "mdi:remote"
-        self._is_on = False
-        self._current_settings = None
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if external control is enabled."""
-        return self._is_on
-
-    async def async_turn_on(self, **kwargs) -> None:
-        """Turn external control on."""
-        try:
-            self._current_settings = await self._manager.read_force_control()
-            if self._current_settings:
-                await self._manager.write_force_control(
-                    enabled=True,
-                    mode=self._current_settings.get('mode', 6),
-                    temperature=self._current_settings.get('temperature', 20.0),
-                    temperature_offset=self._current_settings.get('temperature_offset', 5.0)
-                )
-                self._is_on = True
-        except Exception as e:
-            _LOGGER.error("Failed to enable external control: %s", e)
-
-    async def async_turn_off(self, **kwargs) -> None:
-        """Turn external control off."""
-        try:
-            self._current_settings = await self._manager.read_force_control()
-            if self._current_settings:
-                await self._manager.write_force_control(
-                    enabled=False,
-                    mode=self._current_settings.get('mode', 6),
-                    temperature=self._current_settings.get('temperature', 20.0),
-                    temperature_offset=self._current_settings.get('temperature_offset', 5.0)
-                )
-                self._is_on = False
-        except Exception as e:
-            _LOGGER.error("Failed to disable external control: %s", e)
-
-    async def async_update(self) -> None:
-        """Update external control state."""
-        try:
-            self._current_settings = await self._manager.read_force_control()
-            if self._current_settings:
-                self._is_on = self._current_settings.get('enabled', False)
-        except Exception as e:
-            _LOGGER.error("Error updating external control state: %s", e)
