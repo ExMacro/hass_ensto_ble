@@ -76,6 +76,21 @@ class EnstoThermostatManager:
             self.real_time_coordinator = EnstoRealTimeCoordinator(self)
         return self.real_time_coordinator
 
+    def supports_external_control(self) -> bool:
+        """Check if firmware supports external control (1.14+)."""
+        if not hasattr(self, 'sw_version') or not self.sw_version:
+            return False
+        try:
+            # Parse version like "1.14.0;..." -> 1.14
+            version_str = self.sw_version.split(';')[0]
+            parts = version_str.split('.')
+            major = int(parts[0])
+            minor = int(parts[1]) if len(parts) > 1 else 0
+            return (major, minor) >= (1, 14)
+        except (ValueError, IndexError):
+            _LOGGER.debug("Could not parse firmware version: %s", self.sw_version)
+            return False
+
     def setup(self) -> None:
         """Set up the scanner when needed."""
         self.scanner = bluetooth.async_get_scanner(self.hass)

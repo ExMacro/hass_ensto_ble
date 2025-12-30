@@ -36,7 +36,9 @@ async def async_setup_entry(
     if "ECO16" in model:
         selects.append(EnstoFloorSensorSelect(manager))
     
-    selects.append(EnstoExternalControlModeSelect(manager))
+    # Add external control mode select only for firmware 1.14+
+    if manager.supports_external_control():
+        selects.append(EnstoExternalControlModeSelect(manager))
     
     async_add_entities(selects, True)
 
@@ -218,6 +220,15 @@ class EnstoExternalControlModeSelect(EnstoBaseEntity, SelectEntity):
     def current_option(self) -> Optional[str]:
         """Return current mode."""
         return self._attr_current_option
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+        
+        Entity is always available when firmware supports external control.
+        Mode selector must be accessible to switch between Off/Temperature/Temperature change.
+        """
+        return True
 
     async def async_select_option(self, option: str) -> None:
         """Change external control mode."""

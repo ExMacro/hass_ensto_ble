@@ -38,8 +38,6 @@ async def async_setup_entry(
         EnstoEnergyUnitPriceNumber(manager, currency),
         EnstoVacationTempOffsetNumber(manager),
         EnstoVacationPowerOffsetNumber(manager),
-        EnstoExternalControlOffsetNumber(manager),
-        EnstoExternalControlTemperatureNumber(manager),
     ]
 
     # Add floor limit numbers only for ECO16 models
@@ -49,6 +47,13 @@ async def async_setup_entry(
             EnstoFloorLimitNumber(manager, "low"),
             EnstoFloorLimitNumber(manager, "high"),
             EnstoFloorAreaNumber(manager),
+        ])
+
+    # Add external control numbers only for firmware 1.14+
+    if manager.supports_external_control():
+        entities.extend([
+            EnstoExternalControlTemperatureNumber(manager),
+            EnstoExternalControlOffsetNumber(manager),
         ])
 
     async_add_entities(entities, True)
@@ -588,9 +593,9 @@ class EnstoExternalControlTemperatureNumber(EnstoBaseEntity, NumberEntity):
     def available(self) -> bool:
         """Return if entity is available.
         
-        Entity is only available when external control is active (mode 5 or 6).
+        Entity is only available when external control mode is Temperature (mode 5).
         """
-        return self._current_mode in (5, 6)
+        return self._current_mode == 5
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the external control temperature."""
@@ -645,9 +650,9 @@ class EnstoExternalControlOffsetNumber(EnstoBaseEntity, NumberEntity):
     def available(self) -> bool:
         """Return if entity is available.
         
-        Entity is only available when external control is active (mode 5 or 6).
+        Entity is only available when external control mode is Temperature change (mode 6).
         """
-        return self._current_mode in (5, 6)
+        return self._current_mode == 6
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the external control temperature offset."""

@@ -539,4 +539,18 @@ This brings new mode into heating mode parameters. When this mode is set, then n
 MCU physical potentiometer is ignored in this mode. Target %-value change is immediate.
 
 BYTE[0]: potentiometer setpoint 0-100%, uint8
+
+NOTE: Newer firmwares (1.14+) support extended functionality (19 bytes total)
+
+- BYTE[0-1]: uint16_t, unknown
+- BYTE[2-3]: uint16_t, unknown
+- BYTE[4-5]: uint16_t, unknown
+- BYTE[6-7]: uint16_t, unknown
+- BYTE[8-9]: uint16_t, target temperature, range 50-350, scaled to 5.0-35.0
+- BYTE[10-11]: uint16_t, unknown
+- BYTE[12-13]: int16_t, temperature offset, range -200-200, scaled to -20.0-20.0
+- BYTE[14-15]: uint16_t, unknown
+- BYTE[16]: uint8_t, unknown
+- BYTE[17]: uint8_t, mode (2=Off, 5=Temperature, 6=Temperature change)
+- BYTE[18]: uint8_t, unknown
 """
