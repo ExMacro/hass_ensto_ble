@@ -207,3 +207,19 @@ When calendar mode is enabled, the thermostat follows your programmed weekly sch
    - The resulting kWh sensor can be added to Home Assistant's Energy Dashboard
 
 This enables complete energy monitoring including real-time power usage, daily/monthly consumption tracking, and cost calculations.
+
+### Setting External Control
+
+**Requirements:**
+- Firmware version 1.14 or newer
+- External control wiring to thermostat (see Ensto documentation)
+
+**Configuration:**
+1. Navigate to Settings > Devices & services > [Your thermostat]
+2. Find the External Control Mode selector with options:
+   - "Off" - External control disabled
+   - "Temperature" - Set target temperature
+   - "Temperature change" - Set temperature offset
+3. Configure the corresponding value:
+   - Target temperature (5°C to 35°C) when using "Temperature" mode
+   - Temperature offset (-20°C to +20°C) when using "Temperature change" mode
