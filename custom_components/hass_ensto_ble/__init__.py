@@ -54,6 +54,14 @@ SET_DAY_SCHEMA = vol.Schema({
 
 async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bool:
     """Set up Ensto BLE from a config entry."""
+
+    # Migrate old entries without unique_id
+    if entry.unique_id is None:
+        hass.config_entries.async_update_entry(
+            entry, unique_id=entry.data["mac_address"]
+        )
+        _LOGGER.debug("Migrated config entry %s to have unique_id", entry.data["mac_address"])
+
     try:
         # Initialize the thermostat manager
         manager = EnstoThermostatManager(hass, entry.data["mac_address"])

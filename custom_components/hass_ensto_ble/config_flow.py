@@ -39,7 +39,11 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         if user_input is not None:
             self._mac_address = user_input["Please select an Ensto BLE device in pairing mode"]
-            
+
+            # Set unique_id and abort if already configured
+            await self.async_set_unique_id(self._mac_address)
+            self._abort_if_unique_id_configured()
+
             # Move to currency selection step
             return await self.async_step_currency()
 
