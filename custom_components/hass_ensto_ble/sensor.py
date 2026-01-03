@@ -27,6 +27,8 @@ from homeassistant.helpers import entity_registry
 from .const import DOMAIN, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
 
+from . import EnstoConfigEntry
+
 _LOGGER = logging.getLogger(__name__)
 
 UNIT_MINUTES = "min"
@@ -79,12 +81,12 @@ class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
             _LOGGER.error("Error updating sensor: %s", e)
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, # Home Assistant instance
+    entry: EnstoConfigEntry, # Config entry containing device info like MAC address
+    async_add_entities: AddEntitiesCallback, # Config entry containing device info like MAC address
 ) -> None:
     """Set up sensors from a config entry."""
-    manager = hass.data[DOMAIN][entry.entry_id]
+    manager = entry.runtime_data
     
     # Check floor sensor availability
     data = await manager.read_split_characteristic(REAL_TIME_INDICATION_UUID)

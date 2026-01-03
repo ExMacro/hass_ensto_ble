@@ -15,15 +15,17 @@ from asyncio import sleep
 from .const import DOMAIN
 from .base_entity import EnstoBaseEntity
 
+from . import EnstoConfigEntry
+
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, # Home Assistant instance
+    entry: EnstoConfigEntry, # Config entry containing device info like MAC address
+    async_add_entities: AddEntitiesCallback, # Callback to register new entities
 ) -> None:
     """Set up Ensto datetime entities from a config entry."""
-    manager = hass.data[DOMAIN][entry.entry_id]
+    manager = entry.runtime_data
     
     # Create and add vacation start/end datetime entities
     async_add_entities([

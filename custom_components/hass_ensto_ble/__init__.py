@@ -19,8 +19,12 @@ from .const import (
 
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 from .ensto_thermostat_manager import EnstoThermostatManager
+from .storage_manager import EnstoStorageManager
 
 _LOGGER = logging.getLogger(__name__)
+
+# Type alias for config entry with runtime data
+type EnstoConfigEntry = ConfigEntry[EnstoThermostatManager]
 
 # List of supported platforms for this integration
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT, Platform.NUMBER, Platform.DATETIME]
@@ -49,7 +53,7 @@ SET_DAY_SCHEMA = vol.Schema({
     ])
 })
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bool:
     """Set up Ensto BLE from a config entry."""
     try:
         # Initialize the thermostat manager
@@ -59,9 +63,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manager.setup()
         await manager.ensure_connection()
         
-        # Store the manager instance
-        hass.data.setdefault(DOMAIN, {})
-        hass.data[DOMAIN][entry.entry_id] = manager
+        # Store the manager instance in runtime_data
+        entry.runtime_data = manager
 
         # Read device information
         manager.sw_version = await manager.read_software_revision()
@@ -114,7 +117,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 config_entry_id = entity_entry.config_entry_id
                 
                 # Get the correct thermostat manager instance for this device
-                manager = hass.data[DOMAIN][config_entry_id]
+                config_entry = hass.config_entries.async_get_entry(config_entry_id)
+                manager = config_entry.runtime_data
                 
                 # Read current DST settings from the device
                 current_dst_settings = await manager.read_daylight_saving()
@@ -186,7 +190,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     config_entry_id = entity_entry.config_entry_id
                     
                     # Get the correct thermostat manager instance for this device
-                    manager = hass.data[DOMAIN][config_entry_id]
+                    config_entry = hass.config_entries.async_get_entry(config_entry_id)
+                    manager = config_entry.runtime_data
                     
                     # Read calendar day
                     day = call.data["day"]
@@ -224,7 +229,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_entry_id = entity_entry.config_entry_id
             
             # Get the correct thermostat manager instance for this device
-            manager = hass.data[DOMAIN][config_entry_id]
+            config_entry = hass.config_entries.async_get_entry(config_entry_id)
+            manager = config_entry.runtime_data
             
             # Write calendar day
             day = call.data["day"]
@@ -271,20 +277,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Error setting up Ensto BLE: %s", str(ex))
         raise ConfigEntryNotReady from ex
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:
-        manager = hass.data[DOMAIN].pop(entry.entry_id)
-        # Remove the device data from storage file
-        await manager.storage_manager.async_remove_device_data(manager.mac_address)
+        manager = entry.runtime_data
         await manager.cleanup()
     
     # Only remove services if this is the last config entry for the domain
-    if not hass.data[DOMAIN]:
+    remaining_entries = [
+        e for e in hass.config_entries.async_entries(DOMAIN) 
+        if e.entry_id != entry.entry_id
+    ]
+    if not remaining_entries:
         hass.services.async_remove(DOMAIN, SERVICE_SET_TIME)
         hass.services.async_remove(DOMAIN, SERVICE_GET_CALENDAR_DAY)
         hass.services.async_remove(DOMAIN, SERVICE_SET_CALENDAR_DAY)
 
     return unload_ok
+
+async def async_remove_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> None:
+    """Remove a config entry.
+    
+    Called when user deletes the integration completely, not on disable.
+    Removes stored factory reset ID for the device.
+    """
+    storage_manager = EnstoStorageManager(hass)
+    await storage_manager.async_remove_device_data(entry.data["mac_address"])

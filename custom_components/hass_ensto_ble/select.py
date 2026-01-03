@@ -15,18 +15,20 @@ from .const import (
     EXTERNAL_CONTROL_MODES,
 )
 
+from . import EnstoConfigEntry
+
 _LOGGER = logging.getLogger(__name__)
 
 # Reverse mapping for easy lookup
 FLOOR_SENSOR_TYPES = {v['sensor_type']: k for k, v in FLOOR_SENSOR_CONFIG.items()}
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, # Home Assistant instance
+    entry: EnstoConfigEntry, # Config entry containing device info like MAC address
+    async_add_entities: AddEntitiesCallback # Callback to register new entities
 ) -> None:
     """Set up selects from a config entry."""
-    manager = hass.data[DOMAIN][entry.entry_id]
+    manager = entry.runtime_data
     
     # Always add heating mode select
     selects = [EnstoHeatingModeSelect(manager)]

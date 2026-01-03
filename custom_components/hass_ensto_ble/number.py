@@ -16,15 +16,17 @@ from .base_entity import EnstoBaseEntity
 from .const import DOMAIN, SCAN_INTERVAL, CURRENCY_SYMBOLS
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 
+from . import EnstoConfigEntry
+
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, # Home Assistant instance
+    entry: EnstoConfigEntry, # Config entry containing device info like MAC address
+    async_add_entities: AddEntitiesCallback, # Callback to register new entities
 ) -> None:
-    """Set up numbers from config entry."""
-    manager = hass.data[DOMAIN][entry.entry_id]
+    """Set up numbers from a config entry."""
+    manager = entry.runtime_data
     
     # Get currency from config entry
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
