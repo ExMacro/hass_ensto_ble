@@ -101,8 +101,13 @@ class EnstoThermostatManager:
 
     async def cleanup(self) -> None:
         """Clean up the connection."""
-        if self.client and self.client.is_connected:
-            await self.client.disconnect()
+        try:
+            if self.client and self.client.is_connected:
+                await self.client.disconnect()
+        except Exception as e:
+            _LOGGER.debug("Error during cleanup disconnect: %s", e)
+        finally:
+            self.client = None
 
     async def connect(self) -> None:
         """Establish connection to the device."""
