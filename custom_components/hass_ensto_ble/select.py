@@ -6,11 +6,10 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
-from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
 from .const import (
-    DOMAIN, SCAN_INTERVAL, FLOOR_SENSOR_TYPE_UUID,
+    SCAN_INTERVAL, FLOOR_SENSOR_TYPE_UUID,
     FLOOR_SENSOR_CONFIG, MODE_MAP, SUPPORTED_MODES_ECO16, SUPPORTED_MODES_ELTE6,
     EXTERNAL_CONTROL_MODES,
 )

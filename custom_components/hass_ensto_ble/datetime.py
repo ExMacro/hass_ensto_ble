@@ -9,10 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import device_registry as dr
-from homeassistant.config_entries import ConfigEntry
 from asyncio import sleep
 
-from .const import DOMAIN
 from .base_entity import EnstoBaseEntity
 
 from . import EnstoConfigEntry

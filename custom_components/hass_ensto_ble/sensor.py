@@ -19,12 +19,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import device_registry as dr
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry
 
-from .const import DOMAIN, REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
+from .const import REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
 
 from . import EnstoConfigEntry

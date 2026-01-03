@@ -10,10 +10,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers import device_registry as dr
-from homeassistant.config_entries import ConfigEntry
 
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL, CURRENCY_SYMBOLS
+from .const import SCAN_INTERVAL, CURRENCY_SYMBOLS
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 
 from . import EnstoConfigEntry

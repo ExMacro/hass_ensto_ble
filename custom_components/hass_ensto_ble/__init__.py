@@ -14,7 +14,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
-    CURRENCY_MAP,
 )
 
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY

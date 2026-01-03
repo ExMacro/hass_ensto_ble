@@ -6,12 +6,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.util import dt as dt_util
 
 from datetime import datetime
 from .base_entity import EnstoBaseEntity
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import SCAN_INTERVAL
 
 from . import EnstoConfigEntry
 
