@@ -3,180 +3,224 @@
 ![GitHub License](https://img.shields.io/github/license/ExMacro/hass_ensto_ble)
 [![Installs](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=installs&suffix=%20total&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.hass_ensto_ble.total)](https://github.com/ExMacro/hass_ensto_ble)
 
-# hass_ensto_ble
-_Custom component to read and write data from Ensto BLE thermostats._
+# Hass Ensto BLE
 
-## Note
-- Integration is tested on Raspberry PI 4, Home Assistant OS 16.3, Supervisor 2025.11.1, Core 2025.11.1.
-- Integration tested with Ensto ELTE6-BT and ECO16BT thermostats but should work with all Ensto thermostat supporting the same BLE Interface Description.
-- The integration works with multiple thermostats and ESP32 Bluetooth proxies.
-- Integration is developed and tested only with Home Assistant OS. Other HA installation types are not guaranteed to work.
-- This is a hobby project under development.
+Custom component to read and write data from Ensto BLE thermostats.
 
-## Troubleshooting
-### Pairing Issues
-Some users have needed additional pairing in the terminal to establish a Bluetooth connection.
+## Compatibility
 
-- In Home Assistant terminal, run bluetoothctl. You can continue entering commands while Bluetooth messages appear on screen.
-- If you added the thermostat to HA before and then paired it to another device, you will probably have to remove XX:XX:XX:XX:XX:XX first
-- First type trust XX:XX:XX:XX:XX:XX (replace with your device's MAC address)
-- Second type pair XX:XX:XX:XX:XX:XX (replace with your device's MAC address)
-- Set your Ensto BLE thermostat to pairing mode (blue light blinking)
-- Proceed adding the Ensto BLE thermostat in Home Assistant
+- **Tested environment:** Raspberry Pi 4, Home Assistant OS 16.3, Supervisor 2025.12.3, Core 2025.12.5
+- **Supported devices:** Ensto ELTE6-BT, ECO16BT, and EPHE5-BT thermostats (should work with all Ensto thermostats supporting the same BLE Interface Description)
+- **Multi-device support:** Works with multiple thermostats and ESP32 Bluetooth proxies
+- **Installation type:** Developed and tested only with Home Assistant OS. Other installation types are not guaranteed to work.
 
-### Time Sync Issues
-Common cause for the thermostats to display incorrect internal time (e.g., years in the future or past) is weak or dead RTC backup battery.
-- See the device installation manual on replacing the CR1225 battery
-- Set correct time using the set_device_time service in Developer Tools after battery replacement
-
-## Known Limitations
-
-### Device Name Writing (Home Assistant OS 16.2+)
-Device name cannot be changed anymore via Home Assistant on systems using BlueZ 5.82 or newer (Home Assistant OS 16.2+).
-- BlueZ 5.82+ enforces strict Bluetooth standards and blocks client-side writes to GAP (Generic Access Profile) characteristics, including UUID 2A00 (Device Name).
-- Workaround is to use Ensto's official mobile application (iOS/Android) to change the device name. 
-The integraion reads and displayes the device name in Home Assistant.
+> **Note:** This is a hobby project under active development.
 
 ## Installation
-## HACS (Recommended)
-1. Search the repository `HASS Ensto BLE` from HACS default repositories
-2. Download the latest release to HACS
-3. Restart HA
-4. Go to Settings > Devices & services > Add Integration
+
+### HACS
+
+1. Search for `HASS Ensto BLE` in HACS default repositories
+2. Download the latest release
+3. Restart Home Assistant
+4. Navigate to **Settings → Devices & services → Add Integration**
 5. Search for "Hass Ensto BLE"
 
-## Manual installation
-1. Navigate to your Home Assistant configuration directory (where `configuration.yaml` is located)
-2. Create `custom_components/hass_ensto_ble` directory
-3. Download and place all repository files in the directory
-4. Restart Home Assistant
-5. Add integration via Settings > Devices & services
+## Initial Setup
 
-## Setup Process
-1. Put thermostat in pairing mode (hold BLE reset button >0.5 seconds until blue LED blinks)
+### Pairing a Thermostat
+
+1. Put the thermostat in pairing mode (hold BLE reset button >0.5 seconds until blue LED blinks)
 2. Select your thermostat from the discovered devices list
-3. Choose currency for energy calculations (stored in thermostat)
+3. Choose currency for energy calculations (stored in thermostat memory)
 
-## Add thermostat to UI
-1. Settings > Devices & services > Helpers > Create helper
-2. Generic thermostat
-    - Temperature sensor: Select floor or room temperature sensor which ever you prefer
-    - Actuator switch: "Boost Mode" -switch
-    - Cold/Hot tolerance: "0.5" is fine
-3. Next > Submit > Finish
-4. Add Thermostat card to UI using this new helper climate-entity
+### Adding Thermostat to Dashboard
 
-## Supported functions
-### Setting heating mode
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Select a mode from the drop down menu.
+1. Navigate to **Settings → Devices & services → Helpers → Create helper**
+2. Select **Generic thermostat** and configure:
+   - **Temperature sensor:** Select floor or room temperature sensor
+   - **Actuator switch:** Select "Boost Mode" switch
+   - **Cold/Hot tolerance:** 0.5 is recommended
+3. Click **Next → Submit → Finish**
+4. Add a Thermostat card to your dashboard using the new climate entity
 
-All Ensto BLE thermostats do not support all modes.
+## Features
 
-Floor temperature min / max values are only used in the Combination heating mode.
-Boost power offset and vacation power offset are only used in the Power heating mode
+### Heating Mode
 
-### Enable boost mode
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Set Boost duration in minutes
-3. Set Boost temperature offset (-20C to 20C) or boost power offset (-100% to 100%) if you're using Power heating mode
-4. Enable "Ensto Boost Mode"
-5. Sensor "Ensto Boost Remaining" will start counting from set boost time to zero and turn off automatically.
+Configure the thermostat's heating mode.
 
-### Enable adaptive temperature control
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Enable "Ensto Adaptive Temperature Control". Note! This is a simple switch to enable/disable adaptive temperature change on the device.
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Heating mode** selector
+3. Select a mode from the dropdown menu
 
-### Change the floor sensor type
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Change the Floor sensor type from the drop down menu
-3. After a while, the thermostat will return a new temperature value based on the new floor sensor type
+**Available modes** (not all thermostats support all modes):
+- **Floor** – Floor sensor based heating (ECO16 only)
+- **Room** – Room sensor based heating
+- **Combination** – Combined floor and room sensors (ECO16 only)
+- **Power** – Direct power control
 
-### Set the device time
-1. Home Assistant shows a notification if the device time differs more than one minute from Home Assistant time
-2. Time is handled internally in UTC to ensure consistent operation across time zones
-3. To synchronize the time:
-   - Go to Developer Tools > Actions
-   - Select service `hass_ensto_ble.set_device_time`
-   - Select your thermostat's DateTime entity
-   - Click "PERFORM ACTION"
-4. Navigate to Settings > Devices & services > [Your thermostat]
-5. Verify that the DateTime sensor shows the correct local time
-6. The notification will automatically disappear once the time is synchronized
+> **Note:** Floor temperature min/max values are only used in Combination mode. Boost power offset and vacation power offset are only used in Power mode.
 
-The notification will automatically disappear once the time is synchronized.
+### Boost Mode
 
-### Setting Daylight saving
+Temporarily increase the temperature for a specified duration.
 
-1. Navigate to Settings > Integrations > [Your Ensto thermostat] > Entities
-2. Find the Daylight Saving switch
-4. Turn the switch on or off as needed
-   - The device will automatically convert between UTC and local time based on this setting
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Configure the following:
+   - **Boost duration** – Duration in minutes
+   - **Boost temperature offset** – Offset from -20°C to +20°C (or **Boost power offset** from -100% to +100% in Power mode)
+3. Enable the **Boost mode** switch
+4. The **Boost remaining** sensor shows the countdown to zero, then automatically disables
 
-### Setting Floor Temperature Limits
-1. Navigate to Settings > Integrations > [Your Ensto thermostat] > Entities
-2. Find the Floor Min and Max Temperature
-3. Adjust as needed
-   - The minimum temperature must always be at least 8 degrees lower than the maximum limit
-   - These settings are only used in combination heating mode
-   - In other heating modes, the sensors will be disabled
+### Adaptive Temperature Control
 
-### Setting Room Sensor Calibration value
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the Room Sensor Calibration number entity
-3. Set a value between -5.0°C and +5.0°C to calibrate the room temperature sensor
-   - Positive values increase the displayed temperature
-   - Negative values decrease the displayed temperature
+Enable the thermostat's built-in adaptive temperature adjustment.
 
-### Setting Heating Power
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the Heating Power entity
-3. Adjust the power level
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Adaptive temperature control** switch
+3. Toggle on or off as needed
 
-Changes are stored in the thermostat's memory
+### Daylight Saving
 
-### Configuring Floor Area
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the Floor Area entity
-3. Set the floor area
+Configure automatic daylight saving time adjustments.
 
-Changes are stored in the thermostat's memory
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Daylight saving** switch
+3. Toggle on or off as needed
 
-### Comprehensive Energy Monitoring
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the power usage sensor. It includes the following information as attributes:
-   - Last 24 hour thermostat on/off ratio tracking
-   - Last 7-day thermostat on/off ratio tracking
-   - Last 12-month thermostat on/off ratio tracking
-   - Hourly floor and room temperature readings
+The device automatically converts between UTC and local time based on this setting.
 
-### Setting Vacation Mode
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find and configure the vacation end times
-3. Configure the vacation temperature offset (-20C to 20C) or vacation power offset (-100% to 100%) if you're using Power heating mode
-4. Enable the vacation mode switch. The thermostat will turn on the vacation mode on and off when the vacation start and end times are reached.
+### Device Time Synchronization
 
-Temperature and power offset values and date settings will automatically update in the UI.
+Synchronize the thermostat's internal clock with Home Assistant.
 
-### Setting Calendar Mode
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the Calendar Mode switch
-3. Enable to activate weekly scheduling, disable for manual control
+Home Assistant shows a notification if the device time differs by more than one minute.
 
-When calendar mode is enabled, the thermostat follows your programmed weekly schedule instead of manual temperature settings.
+1. Navigate to **Developer Tools → Actions**
+2. Select service `hass_ensto_ble.set_device_time`
+3. Select your thermostat's DateTime entity as target
+4. Click **Perform action**
+5. Verify the **Date and time** sensor shows the correct local time
+
+The notification disappears automatically once synchronized.
+
+> **Note:** Time is handled internally in UTC to ensure consistent operation across time zones.
+
+### Floor Sensor Type
+
+Change the floor sensor type for accurate temperature readings (ECO16 only).
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Floor sensor type** selector
+3. Select the appropriate sensor type from the dropdown menu
+
+The thermostat will return updated temperature values based on the new sensor type.
+
+### Floor Temperature Limits
+
+Configure minimum and maximum floor temperature limits (ECO16 only, Combination mode).
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Floor temperature min** and **Floor temperature max** entities
+3. Adjust values as needed
+
+**Constraints:**
+- Minimum must be at least 8°C lower than maximum
+- These settings are only active in Combination heating mode
+- Entities are disabled in other heating modes
+
+### Room Sensor Calibration
+
+Calibrate the room temperature sensor for accurate readings.
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Room sensor calibration** entity
+3. Set a value between -5.0°C and +5.0°C
+
+Positive values increase the displayed temperature; negative values decrease it.
+
+### Heating Power
+
+Configure the thermostat's heating power rating for energy calculations.
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Heating power** entity
+3. Set your thermostat's actual power rating (e.g., 900W)
+
+This value is stored in the thermostat's memory and enables power consumption monitoring.
+
+### Floor Area
+
+Configure the heated floor area for reference (ECO16 only).
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Floor area** entity
+3. Set the floor area in square meters
+
+This value is stored in the thermostat's memory.
+
+### Energy Monitoring
+
+Monitor power usage and historical data.
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Power usage** sensor
+
+The sensor includes the following attributes:
+- Last 24-hour thermostat on/off ratio
+- Last 7-day thermostat on/off ratio
+- Last 12-month thermostat on/off ratio
+- Hourly floor and room temperature history
+
+### Real-Time Power Consumption
+
+Monitor real-time power consumption and track energy usage.
+
+**Setup:**
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Set your thermostat's power rating in the **Heating power** entity
+3. The **Current power** sensor becomes available showing:
+   - Full heating power when the relay is ON
+   - 0W when the relay is OFF
+
+### Vacation Mode
+
+Schedule a vacation period with reduced temperature.
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Configure the following:
+   - **Vacation start** and **Vacation end** – Date and time
+   - **Vacation temperature offset** – Offset from -20°C to +20°C (or **Vacation power offset** from -100% to +100% in Power mode)
+3. Enable the **Vacation mode** switch
+
+The thermostat automatically activates and deactivates vacation mode at the configured times.
+
+### Calendar Mode
+
+Enable weekly scheduling for automated temperature control.
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **Calendar mode** switch
+3. Toggle on to activate weekly scheduling, off for manual control
+
+When enabled, the thermostat follows programmed weekly schedules instead of manual temperature settings.
 
 #### Reading Calendar Programs
-1. Navigate to Developer Tools > Actions
-2. Select service `hass_ensto_ble.get_calendar_day`
-3. Select any of your thermostat's sensor entities
-4. Enter day number (1=Monday, 7=Sunday)
-5. Click "PERFORM ACTION"
 
-#### Programming Calendar Days
-1. Navigate to Developer Tools > Actions
+1. Navigate to **Developer Tools → Actions**
+2. Select service `hass_ensto_ble.get_calendar_day`
+3. Select any of your thermostat's sensor entities as target
+4. Enter the day number (1=Monday, 7=Sunday)
+5. Click **Perform action**
+
+#### Writing Calendar Programs
+
+1. Navigate to **Developer Tools → Actions**
 2. Select service `hass_ensto_ble.set_calendar_day`
-3. Select any of your thermostat's sensor entities
-4. Configure the day and programs (up to six):
+3. Select any of your thermostat's sensor entities as target
+4. Configure the day and up to six programs:
 
 ```yaml
 - start_hour: 6
@@ -194,32 +238,61 @@ When calendar mode is enabled, the thermostat follows your programmed weekly sch
   power_offset: 0
   enabled: true
 ```
-### Real-time Power Consumption Monitoring
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the Heating Power entity and set your thermostat's actual power rating (e.g., 900W)
-3. The Current Power sensor will become available and show:
-   - Full heating power when the relay is ON
-   - 0W when the relay is OFF
-4. To track energy consumption (kWh):
-   - Go to Settings > Helpers > Create Helper > Integral Sensor
-   - Select your thermostat's Current Power sensor as input
-   - Set Method to "Left Riemann sum" and Unit prefix to "kilo (k)"
-   - The resulting kWh sensor can be added to Home Assistant's Energy Dashboard
 
-This enables complete energy monitoring including real-time power usage, daily/monthly consumption tracking, and cost calculations.
+5. Click **Perform action**
 
-### Setting External Control
+### External Control
+
+Control the thermostat via external input signal.
 
 **Requirements:**
 - Firmware version 1.14 or newer
-- External control wiring to thermostat (see Ensto documentation)
+- External control wiring connected to the thermostat (see Ensto documentation)
 
 **Configuration:**
-1. Navigate to Settings > Devices & services > [Your thermostat]
-2. Find the External Control Mode selector with options:
-   - "Off" - External control disabled
-   - "Temperature" - Set target temperature
-   - "Temperature change" - Set temperature offset
+
+1. Navigate to **Settings → Devices & services → [Your thermostat]**
+2. Find the **External control mode** selector with options:
+   - **Off** – External control disabled
+   - **Temperature** – Set absolute target temperature
+   - **Temperature change** – Set temperature offset from normal target
 3. Configure the corresponding value:
-   - Target temperature (5°C to 35°C) when using "Temperature" mode
-   - Temperature offset (-20°C to +20°C) when using "Temperature change" mode
+   - **External control temperature** (5°C to 35°C) when using Temperature mode
+   - **External control offset** (-20°C to +20°C) when using Temperature change mode
+
+## Troubleshooting
+
+### Pairing Issues
+
+Some users need additional pairing via terminal to establish a Bluetooth connection.
+
+1. Open the Home Assistant terminal
+2. Run `bluetoothctl` (you can continue entering commands while Bluetooth messages appear)
+3. If you previously added the thermostat and then paired it to another device, first run:
+   ```
+   remove XX:XX:XX:XX:XX:XX
+   ```
+4. Run the following commands (replace XX:XX:XX:XX:XX:XX with your device's MAC address):
+   ```
+   trust XX:XX:XX:XX:XX:XX
+   pair XX:XX:XX:XX:XX:XX
+   ```
+5. Set your Ensto thermostat to pairing mode (blue LED blinking)
+6. Proceed with adding the thermostat in Home Assistant
+
+### Time Sync Issues
+
+Incorrect internal time (e.g., years in the future or past) is commonly caused by a weak or dead RTC backup battery.
+
+1. Replace the CR1225 battery (see device installation manual)
+2. Use the `set_device_time` service in Developer Tools to synchronize the time
+
+## Known Limitations
+
+### Device Name Writing (Home Assistant OS 16.2+)
+
+Device names cannot be changed via Home Assistant on systems using BlueZ 5.82 or newer (Home Assistant OS 16.2+).
+
+**Cause:** BlueZ 5.82+ enforces strict Bluetooth standards and blocks client-side writes to GAP (Generic Access Profile) characteristics, including UUID 2A00 (Device Name).
+
+**Workaround:** Use Ensto's official mobile application (iOS/Android) to change the device name. The integration reads and displays the device name in Home Assistant.
