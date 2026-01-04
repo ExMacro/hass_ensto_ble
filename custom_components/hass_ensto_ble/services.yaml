@@ -9,11 +9,14 @@ set_device_time:
 get_calendar_day:
   name: Get calendar day
   description: Read calendar programs for a specific day
-  target:
-    entity:
-      integration: hass_ensto_ble
-      domain: sensor
   fields:
+    target:
+      name: Target
+      description: Target device
+      required: true
+      selector:
+        device:
+          integration: hass_ensto_ble
     day:
       name: Day
       description: Day of week (1=Monday, 7=Sunday)
@@ -28,11 +31,14 @@ get_calendar_day:
 set_calendar_day:
   name: Set calendar day
   description: Write calendar programs for a specific day
-  target:
-    entity:
-      integration: hass_ensto_ble
-      domain: sensor
   fields:
+    target:
+      name: Target
+      description: Target device
+      required: true
+      selector:
+        device:
+          integration: hass_ensto_ble
     day:
       name: Day
       description: Day of week (1=Monday, 7=Sunday)

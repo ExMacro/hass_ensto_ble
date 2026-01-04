@@ -9,6 +9,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.util import dt as dt_util
 
@@ -35,7 +36,7 @@ SERVICE_SET_CALENDAR_DAY = "set_calendar_day"
 
 GET_DAY_SCHEMA = vol.Schema({
     vol.Required("day"): vol.Range(min=1, max=7)
-})
+}, extra=vol.ALLOW_EXTRA)
 
 SET_DAY_SCHEMA = vol.Schema({
     vol.Required("day"): vol.Range(min=1, max=7),
@@ -50,7 +51,7 @@ SET_DAY_SCHEMA = vol.Schema({
             vol.Required("enabled"): bool
         })
     ])
-})
+}, extra=vol.ALLOW_EXTRA)
 
 async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bool:
     """Set up Ensto BLE from a config entry."""
@@ -176,82 +177,82 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
 
         async def get_calendar_day(call: ServiceCall) -> None:
                     """Get calendar day programs service."""
-                    # Extract the target entity from service call data
-                    target_entity = call.data.get("entity_id")
-                        
-                    if not target_entity:
-                        _LOGGER.error("No target entity specified")
+                    # Get device_id from target
+                    device_ids = call.data.get("target", [])
+                    if not device_ids:
+                        _LOGGER.error("Action [Get Calendar Day]: no target device specified")
                         return
 
-                    # We only process first entity if multiple are provided
-                    if isinstance(target_entity, list):
-                        entity_id = target_entity[0]
-                    else:
-                        entity_id = target_entity
+                    if not isinstance(device_ids, list):
+                        device_ids = [device_ids]
 
-                    # Get the entity registry entry for the target
-                    entity_registry = er.async_get(hass)
-                    entity_entry = entity_registry.async_get(entity_id)
-                    
-                    # Get config entry id from entity entry
-                    config_entry_id = entity_entry.config_entry_id
-                    
-                    # Get the correct thermostat manager instance for this device
-                    config_entry = hass.config_entries.async_get_entry(config_entry_id)
-                    manager = config_entry.runtime_data
-                    
-                    # Read calendar day
                     day = call.data["day"]
-                    result = await manager.read_calendar_day(day)
-                    
-                    if result:
-                        enabled_programs = [p for p in result['programs'] if p['enabled']]
-                        programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
-                        _LOGGER.debug("Updated %s Calendar Day %d for %s: %d programs loaded [%s]",
-                                      manager.device_name or "Unknown Device", day, manager.mac_address,
-                                      len(enabled_programs), programs_str)
-                    else:
-                        _LOGGER.error("Action [Get Calendar Day %d] for [%s]: failed to read", day, manager.mac_address)
+                    device_registry = dr.async_get(hass)
+
+                    for device_id in device_ids:
+                        # Find config entry for this device
+                        device_entry = device_registry.async_get(device_id)
+
+                        if not device_entry:
+                            _LOGGER.error("Action [Get Calendar Day %d]: device not found %s", day, device_id)
+                            continue
+
+                        # Get config entry from device
+                        config_entry_id = next(iter(device_entry.config_entries))
+                        config_entry = hass.config_entries.async_get_entry(config_entry_id)
+                        manager = config_entry.runtime_data
+
+                        # Read calendar day
+                        result = await manager.read_calendar_day(day)
+
+                        if result:
+                            enabled_programs = [p for p in result['programs'] if p['enabled']]
+                            programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
+                            _LOGGER.info("Action [Get Calendar Day %d] for [%s] (%s): %d programs [%s]",
+                                    day, manager.device_name or "Unknown", manager.mac_address, len(enabled_programs), programs_str)
+                        else:
+                            _LOGGER.error("Action [Get Calendar Day %d] for [%s] (%s): failed to read", 
+                                    day, manager.device_name or "Unknown", manager.mac_address)
 
         async def set_calendar_day(call: ServiceCall) -> None:
-            """Set calendar day programs service."""
-            # Extract the target entity from service call data
-            target_entity = call.data.get("entity_id")
-                
-            if not target_entity:
-                _LOGGER.error("No target entity specified")
-                return
+                    """Set calendar day programs service."""
+                    # Get device_id from target
+                    device_ids = call.data.get("target", [])
+                    if not device_ids:
+                        _LOGGER.error("Action [Set Calendar Day]: no target device specified")
+                        return
 
-            # We only process first entity if multiple are provided
-            if isinstance(target_entity, list):
-                entity_id = target_entity[0]
-            else:
-                entity_id = target_entity
+                    if not isinstance(device_ids, list):
+                        device_ids = [device_ids]
 
-            # Get the entity registry entry for the target
-            entity_registry = er.async_get(hass)
-            entity_entry = entity_registry.async_get(entity_id)
-            
-            # Get config entry id from entity entry
-            config_entry_id = entity_entry.config_entry_id
-            
-            # Get the correct thermostat manager instance for this device
-            config_entry = hass.config_entries.async_get_entry(config_entry_id)
-            manager = config_entry.runtime_data
-            
-            # Write calendar day
-            day = call.data["day"]
-            programs = call.data["programs"]
-            success = await manager.write_calendar_day(day, programs)
-            
-            if success:
-                enabled_programs = [p for p in programs if p['enabled']]
-                programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
-                _LOGGER.debug("Updated %s Calendar Day %d for %s: %d programs saved [%s]",
-                              manager.device_name or "Unknown Device", day, manager.mac_address,
-                              len(enabled_programs), programs_str)
-            else:
-                _LOGGER.error("Action [Set Calendar Day %d] for [%s]: failed to write", day, manager.mac_address)
+                    day = call.data["day"]
+                    programs = call.data["programs"]
+                    device_registry = dr.async_get(hass)
+
+                    for device_id in device_ids:
+                        # Find config entry for this device
+                        device_entry = device_registry.async_get(device_id)
+
+                        if not device_entry:
+                            _LOGGER.error("Action [Set Calendar Day %d]: device not found %s", day, device_id)
+                            continue
+
+                        # Get config entry from device
+                        config_entry_id = next(iter(device_entry.config_entries))
+                        config_entry = hass.config_entries.async_get_entry(config_entry_id)
+                        manager = config_entry.runtime_data
+
+                        # Write calendar day
+                        success = await manager.write_calendar_day(day, programs)
+
+                        if success:
+                            enabled_programs = [p for p in programs if p['enabled']]
+                            programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
+                            _LOGGER.info("Action [Set Calendar Day %d] for [%s] (%s): %d programs saved [%s]",
+                                    day, manager.device_name or "Unknown", manager.mac_address, len(enabled_programs), programs_str)
+                        else:
+                            _LOGGER.error("Action [Set Calendar Day %d] for [%s] (%s): failed to write", 
+                                    day, manager.device_name or "Unknown", manager.mac_address)
 
         # Only register services if they don't already exist
         if not hass.services.has_service(DOMAIN, SERVICE_SET_TIME):
@@ -266,6 +267,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                 DOMAIN,
                 SERVICE_GET_CALENDAR_DAY,
                 get_calendar_day,
+                schema=GET_DAY_SCHEMA,
             )
 
         if not hass.services.has_service(DOMAIN, SERVICE_SET_CALENDAR_DAY):
@@ -273,6 +275,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                 DOMAIN,
                 SERVICE_SET_CALENDAR_DAY,
                 set_calendar_day,
+                schema=SET_DAY_SCHEMA,
             )
 
         # Set up the platforms
