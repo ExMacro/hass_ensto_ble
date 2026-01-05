@@ -211,7 +211,7 @@ When enabled, the thermostat follows programmed weekly schedules instead of manu
 
 1. Navigate to **Developer Tools → Actions**
 2. Select service `hass_ensto_ble.get_calendar_day`
-3. Select any of your thermostat's sensor entities as target
+3. Select your thermostat device as target
 4. Enter the day number (1=Monday, 7=Sunday)
 5. Click **Perform action**
 
@@ -219,7 +219,7 @@ When enabled, the thermostat follows programmed weekly schedules instead of manu
 
 1. Navigate to **Developer Tools → Actions**
 2. Select service `hass_ensto_ble.set_calendar_day`
-3. Select any of your thermostat's sensor entities as target
+3. Select your thermostat device as target
 4. Configure the day and up to six programs:
 
 ```yaml
