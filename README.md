@@ -31,8 +31,10 @@ Custom component to read and write data from Ensto BLE thermostats.
 ### Pairing a Thermostat
 
 1. Put the thermostat in pairing mode (hold BLE reset button >0.5 seconds until blue LED blinks)
-2. Select your thermostat from the discovered devices list
-3. Choose currency for energy calculations (stored in thermostat memory)
+2. Navigate to **Settings → Devices & services → Add Integration**
+3. Search for "Hass Ensto BLE"
+4. Select your thermostat from the discovered devices list
+5. Choose currency for energy calculations (stored in thermostat memory)
 
 ### Adding Thermostat to Dashboard
 
