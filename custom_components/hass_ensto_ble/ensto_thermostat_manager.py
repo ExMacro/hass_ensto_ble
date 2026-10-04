@@ -456,97 +456,77 @@ class EnstoThermostatManager:
 
     async def read_boost(self) -> dict:
         """Read boost configuration from device."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(BOOST_UUID)
-
-            # Parse data
-            enabled = bool(data[0])  # First byte is enable flag
-            
-            # Parse temperature offset (bytes 1-2 as signed int16)
-            # Convert from raw value (2150 = 21.5 degrees)
-            offset_raw = int.from_bytes(data[1:3], byteorder='little', signed=True)
-            offset_degrees = offset_raw / 100.0
-            
-            # Parse percentage offset (byte 3)
-            # Convert percentage offset byte to signed int (range -128 to 127)
-            offset_percentage = int.from_bytes([data[3]], byteorder='little', signed=True)
-            
-            # Parse time setpoint (bytes 4-5 as unsigned int16)
-            setpoint_minutes = int.from_bytes(data[4:6], byteorder='little')
-            
-            # Parse remaining time (bytes 6-7 as unsigned int16)
-            remaining_minutes = int.from_bytes(data[6:8], byteorder='little')
-
-            return {
-                'enabled': enabled,
-                'offset_degrees': offset_degrees,
-                'offset_percentage': offset_percentage,
-                'setpoint_minutes': setpoint_minutes,
-                'remaining_minutes': remaining_minutes
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading boost config: %s", e)
-            self.client = None
+        # Read raw data from device
+        data = await self._ble_read(BOOST_UUID, "boost config")
+        if not data:
             return None
-            
-        except Exception as e:
-            _LOGGER.error("Failed to read boost config: %s", e)
+
+        if len(data) < 8:
+            _LOGGER.error("Invalid boost data length: %d", len(data))
             return None
+
+        # Parse data
+        enabled = bool(data[0])  # First byte is enable flag
+
+        # Parse temperature offset (bytes 1-2 as signed int16)
+        # Convert from raw value (2150 = 21.5 degrees)
+        offset_raw = int.from_bytes(data[1:3], byteorder='little', signed=True)
+        offset_degrees = offset_raw / 100.0
+
+        # Parse percentage offset (byte 3)
+        # Convert percentage offset byte to signed int (range -128 to 127)
+        offset_percentage = int.from_bytes([data[3]], byteorder='little', signed=True)
+
+        # Parse time setpoint (bytes 4-5 as unsigned int16)
+        setpoint_minutes = int.from_bytes(data[4:6], byteorder='little')
+
+        # Parse remaining time (bytes 6-7 as unsigned int16)
+        remaining_minutes = int.from_bytes(data[6:8], byteorder='little')
+
+        return {
+            'enabled': enabled,
+            'offset_degrees': offset_degrees,
+            'offset_percentage': offset_percentage,
+            'setpoint_minutes': setpoint_minutes,
+            'remaining_minutes': remaining_minutes
+        }
 
     async def write_boost(self, enabled: bool, offset_degrees: float, offset_percentage: int, duration_minutes: int) -> bool:
         """Write boost configuration to device."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-
-            # Validate input values
-            if not (-20 <= offset_degrees <= 20):
-                raise ValueError("Temperature offset must be between -20 and 20 degrees")
-            if not (-100 <= offset_percentage <= 100):
-                raise ValueError("Percentage offset must be between -100 and 100")
-            if not (0 <= duration_minutes <= 65535):  # max value for uint16
-                raise ValueError("Duration must be between 0 and 65535 minutes")
-
-            # Convert temperature to raw value (multiply by 100)
-            # e.g., 21.5 degrees becomes 2150
-            offset_raw = int(offset_degrees * 100)
-
-            # Create data packet (8 bytes)
-            data = bytearray(8)
-            data[0] = 1 if enabled else 0  # Enable/disable flag
-            
-            # Temperature offset as signed int16
-            data[1:3] = offset_raw.to_bytes(2, byteorder='little', signed=True)
-            
-            # Percentage offset
-            # Convert percentage offset to signed int8
-            data[3] = offset_percentage.to_bytes(1, byteorder='little', signed=True)[0]
-            
-            # Duration setpoint as unsigned int16
-            data[4:6] = duration_minutes.to_bytes(2, byteorder='little')
-            
-            # Remaining time bytes are left as 0
-            data[6:8] = (0).to_bytes(2, byteorder='little')
-            
-            # Write to device
-            await self.client.write_gatt_char(BOOST_UUID, data, response=True)
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing boost config: %s", e)
-            self.client = None
-            return None
-            
-        except Exception as e:
-            _LOGGER.error("Failed to write boost config: %s", e)
+        # Validate input values
+        if not (-20 <= offset_degrees <= 20):
+            _LOGGER.error("Temperature offset must be between -20 and 20 degrees: %s", offset_degrees)
             return False
+        if not (-100 <= offset_percentage <= 100):
+            _LOGGER.error("Percentage offset must be between -100 and 100: %s", offset_percentage)
+            return False
+        if not (0 <= duration_minutes <= 65535):  # max value for uint16
+            _LOGGER.error("Duration must be between 0 and 65535 minutes: %s", duration_minutes)
+            return False
+
+        # Convert temperature to raw value (multiply by 100)
+        # e.g., 21.5 degrees becomes 2150
+        offset_raw = int(offset_degrees * 100)
+
+        # Create data packet (8 bytes)
+        data = bytearray(8)
+        data[0] = 1 if enabled else 0  # Enable/disable flag
+
+        # Temperature offset as signed int16
+        data[1:3] = offset_raw.to_bytes(2, byteorder='little', signed=True)
+
+        # Percentage offset
+        # Convert percentage offset to signed int8
+        data[3] = offset_percentage.to_bytes(1, byteorder='little', signed=True)[0]
+
+        # Duration setpoint as unsigned int16
+        data[4:6] = duration_minutes.to_bytes(2, byteorder='little')
+
+        # Remaining time bytes are left as 0
+        data[6:8] = (0).to_bytes(2, byteorder='little')
+
+        # Write to device
+        return await self._ble_write(BOOST_UUID, data, "boost config")
 
     async def read_heating_mode(self) -> dict:
         """Read heating mode configuration from device."""
@@ -702,44 +682,32 @@ class EnstoThermostatManager:
                 second (int): Second (0-59)
             None: If read fails
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(DATE_AND_TIME_UUID)
-
-            # Ensure input is the correct length
-            if len(data) != 7:
-                _LOGGER.error("Device timestamp must be 7 bytes long.")
-                return None
-            
-            # Extract individual bytes
-            year = int.from_bytes(data[0:2], byteorder="little")
-            month = data[2]
-            date = data[3]
-            hour = data[4]
-            minute = data[5]
-            second = data[6]
-
-            return {
-                "year": year,
-                "month": month,
-                "day": date,
-                "hour": hour,
-                "minute": minute,
-                "second": second
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading date and time from device: %s", e)
-            self.client = None
+        # Read raw data from device
+        data = await self._ble_read(DATE_AND_TIME_UUID, "date and time from device")
+        if data is None:
             return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to read date and time from device: %s", e)
+
+        # Ensure input is the correct length
+        if len(data) != 7:
+            _LOGGER.error("Device timestamp must be 7 bytes long.")
             return None
+
+        # Extract individual bytes
+        year = int.from_bytes(data[0:2], byteorder="little")
+        month = data[2]
+        date = data[3]
+        hour = data[4]
+        minute = data[5]
+        second = data[6]
+
+        return {
+            "year": year,
+            "month": month,
+            "day": date,
+            "hour": hour,
+            "minute": minute,
+            "second": second
+        }
 
     async def write_date_and_time(self, year: int, month: int, day: int, hour: int, minute: int, second: int) -> bool:
         """Write date and time to device.
@@ -763,68 +731,53 @@ class EnstoThermostatManager:
             maintained with UTC timestamps. All timestamps must be in UTC regardless 
             of the device's timezone settings.
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-
-            # Validate input values
-            if not (0 <= year <= 9999):
-                _LOGGER.error("Invalid UTC year: %s", year)
-                return False
-            if not (1 <= month <= 12):
-                _LOGGER.error("Invalid UTC month: %s", month)
-                return False
-            if not (1 <= day <= 31):
-                _LOGGER.error("Invalid UTC day: %s", day)
-                return False
-            if not (0 <= hour <= 23):
-                _LOGGER.error("Invalid UTC hour: %s", hour)
-                return False
-            if not (0 <= minute <= 59):
-                _LOGGER.error("Invalid UTC minute: %s", minute)
-                return False
-            if not (0 <= second <= 59):
-                _LOGGER.error("Invalid UTC second: %s", second)
-                return False
-
-            _LOGGER.debug(
-                "Writing UTC time to %s for %s: %04d-%02d-%02d %02d:%02d:%02d",
-                self.device_name or "Unknown Device",
-                self.mac_address,
-                year, month, day, hour, minute, second
-            )
-
-            # Construct byte array according to device spec 2.2.2:
-            # BYTE[0-1]: year as uint16_t
-            # BYTE[2]: month 1-12
-            # BYTE[3]: date 1-31
-            # BYTE[4]: hour 0-23
-            # BYTE[5]: minute 0-59
-            # BYTE[6]: second 0-59
-            year_bytes = year.to_bytes(2, byteorder="little")
-            data = bytearray([
-                year_bytes[0],    # First byte of year
-                year_bytes[1],    # Second byte of year
-                month,            # Month
-                day,              # Day
-                hour,             # Hour
-                minute,           # Minute
-                second            # Second
-            ])
-
-            # Write to device
-            await self.client.write_gatt_char(DATE_AND_TIME_UUID, data, response=True)
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing UTC time to device: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write UTC time to device: %s", e)
+        # Validate input values
+        if not (0 <= year <= 9999):
+            _LOGGER.error("Invalid UTC year: %s", year)
             return False
+        if not (1 <= month <= 12):
+            _LOGGER.error("Invalid UTC month: %s", month)
+            return False
+        if not (1 <= day <= 31):
+            _LOGGER.error("Invalid UTC day: %s", day)
+            return False
+        if not (0 <= hour <= 23):
+            _LOGGER.error("Invalid UTC hour: %s", hour)
+            return False
+        if not (0 <= minute <= 59):
+            _LOGGER.error("Invalid UTC minute: %s", minute)
+            return False
+        if not (0 <= second <= 59):
+            _LOGGER.error("Invalid UTC second: %s", second)
+            return False
+
+        _LOGGER.debug(
+            "Writing UTC time to %s for %s: %04d-%02d-%02d %02d:%02d:%02d",
+            self.device_name or "Unknown Device",
+            self.mac_address,
+            year, month, day, hour, minute, second
+        )
+
+        # Construct byte array according to device spec 2.2.2:
+        # BYTE[0-1]: year as uint16_t
+        # BYTE[2]: month 1-12
+        # BYTE[3]: date 1-31
+        # BYTE[4]: hour 0-23
+        # BYTE[5]: minute 0-59
+        # BYTE[6]: second 0-59
+        year_bytes = year.to_bytes(2, byteorder="little")
+        data = bytearray([
+            year_bytes[0],    # First byte of year
+            year_bytes[1],    # Second byte of year
+            month,            # Month
+            day,              # Day
+            hour,             # Hour
+            minute,           # Minute
+            second            # Second
+        ])
+
+        # Write to device
+        return await self._ble_write(DATE_AND_TIME_UUID, data, "UTC time to device")
 
     async def read_daylight_saving(self) -> dict:
         """Read daylight saving configuration from device.
@@ -837,38 +790,30 @@ class EnstoThermostatManager:
                 timezone_offset (int): Base timezone offset in minutes from UTC
             None: If read fails
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(DAYLIGHT_SAVING_UUID)
-
-            # Parse data
-            enabled = bool(data[0])
-            # bytes 2-3: winter->summer offset (signed int16)
-            winter_to_summer = int.from_bytes(data[2:4], byteorder='little', signed=True)
-            # bytes 4-5: summer->winter offset (signed int16)
-            summer_to_winter = int.from_bytes(data[4:6], byteorder='little', signed=True)
-            # bytes 6-7: timezone offset in minutes (signed int16)
-            timezone_offset = int.from_bytes(data[6:8], byteorder='little', signed=True)
-
-            return {
-                'enabled': enabled,
-                'winter_to_summer_offset': winter_to_summer,
-                'summer_to_winter_offset': summer_to_winter,
-                'timezone_offset': timezone_offset
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading daylight saving config: %s", e)
-            self.client = None
+        # Read raw data from device
+        data = await self._ble_read(DAYLIGHT_SAVING_UUID, "daylight saving config")
+        if not data:
             return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to read daylight saving config: %s", e)
+
+        if len(data) < 8:
+            _LOGGER.error("Invalid daylight saving data length: %d", len(data))
             return None
+
+        # Parse data
+        enabled = bool(data[0])
+        # bytes 2-3: winter->summer offset (signed int16)
+        winter_to_summer = int.from_bytes(data[2:4], byteorder='little', signed=True)
+        # bytes 4-5: summer->winter offset (signed int16)
+        summer_to_winter = int.from_bytes(data[4:6], byteorder='little', signed=True)
+        # bytes 6-7: timezone offset in minutes (signed int16)
+        timezone_offset = int.from_bytes(data[6:8], byteorder='little', signed=True)
+
+        return {
+            'enabled': enabled,
+            'winter_to_summer_offset': winter_to_summer,
+            'summer_to_winter_offset': summer_to_winter,
+            'timezone_offset': timezone_offset
+        }
 
     async def write_daylight_saving(
         self,
@@ -894,41 +839,29 @@ class EnstoThermostatManager:
             - DST changes are 1h (60 minutes)
             - Device adds the DST offset automatically when enabled
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
+        data = bytearray(8)
+        data[0] = 1 if enabled else 0  # Enable/disable flag
+        data[1] = 0  # Reserved byte
 
-            data = bytearray(8)
-            data[0] = 1 if enabled else 0  # Enable/disable flag
-            data[1] = 0  # Reserved byte
-            
-            # Winter->summer offset (1h = 60 minutes)
-            data[2:4] = winter_to_summer.to_bytes(2, byteorder='little', signed=True)
-            
-            # Summer->winter offset (1h = 60 minutes)
-            data[4:6] = summer_to_winter.to_bytes(2, byteorder='little', signed=True)
-            
-            # Timezone offset (UTC+2 = 120 minutes for Finland)
-            data[6:8] = timezone_offset.to_bytes(2, byteorder='little', signed=True)
+        # Winter->summer offset (1h = 60 minutes)
+        data[2:4] = winter_to_summer.to_bytes(2, byteorder='little', signed=True)
 
-            await self.client.write_gatt_char(DAYLIGHT_SAVING_UUID, data, response=True)
-            _LOGGER.debug(
-                "Wrote DST config to %s for %s: enabled=%s, timezone=%d min",
-                self.device_name or "Unknown Device", 
-                self.mac_address,
-                enabled, timezone_offset
-            )
-            return True
+        # Summer->winter offset (1h = 60 minutes)
+        data[4:6] = summer_to_winter.to_bytes(2, byteorder='little', signed=True)
 
-        except BleakError as e:
-            _LOGGER.error("BLE error writing daylight saving config: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write daylight saving config: %s", e)
+        # Timezone offset (UTC+2 = 120 minutes for Finland)
+        data[6:8] = timezone_offset.to_bytes(2, byteorder='little', signed=True)
+
+        if not await self._ble_write(DAYLIGHT_SAVING_UUID, data, "daylight saving config"):
             return False
+
+        _LOGGER.debug(
+            "Wrote DST config to %s for %s: enabled=%s, timezone=%d min",
+            self.device_name or "Unknown Device",
+            self.mac_address,
+            enabled, timezone_offset
+        )
+        return True
 
     async def read_floor_limits(self) -> Optional[dict]:
         """Read floor temperature limits from device.
@@ -1013,57 +946,27 @@ class EnstoThermostatManager:
 
     async def read_room_sensor_calibration(self) -> dict:
         """Read room sensor calibration value."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-                
-            data = await self.client.read_gatt_char(CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID)
-            raw_value = int.from_bytes(data[0:2], byteorder='little', signed=True)
-            calibration_value = round(raw_value / 10, 1)
-            
-            return {
-                'calibration_value': calibration_value
-            }
+        data = await self._ble_read(CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID, "room sensor calibration")
+        if not data:
+            return None
 
-        except BleakError as e:
-            _LOGGER.error("BLE error reading room sensor calibration: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to read room sensor calibration: %s", e)
-            return None
+        raw_value = int.from_bytes(data[0:2], byteorder='little', signed=True)
+        calibration_value = round(raw_value / 10, 1)
+
+        return {
+            'calibration_value': calibration_value
+        }
 
     async def write_room_sensor_calibration(self, value: float) -> bool:
         """Write room sensor calibration value."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-                
-            if not (-5.0 <= value <= 5.0):
-                raise ValueError("Calibration value must be between -5.0 and +5.0 °C")
-                
-            raw_value = int(value * 10)
-            data = raw_value.to_bytes(2, byteorder='little', signed=True)
-            
-            await self.client.write_gatt_char(
-                CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID,
-                data,
-                response=True
-            )
-            
-            return True
-                
-        except BleakError as e:
-            _LOGGER.error("BLE error writing room sensor calibration: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write room sensor calibration: %s", e)
+        if not (-5.0 <= value <= 5.0):
+            _LOGGER.error("Calibration value must be between -5.0 and +5.0 °C: %s", value)
             return False
+
+        raw_value = int(value * 10)
+        data = raw_value.to_bytes(2, byteorder='little', signed=True)
+
+        return await self._ble_write(CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID, data, "room sensor calibration")
 
     async def read_software_revision(self) -> Optional[str]:
         """Read software revision string."""
@@ -1197,76 +1100,55 @@ class EnstoThermostatManager:
             }
         """
 
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(ENERGY_UNIT_UUID)
-            
-            # Parse currency (first byte)
-            currency = data[0]
-            
-            # Parse price (bytes 2-3 as unsigned int16, scaled by 100)
-            price_raw = int.from_bytes(data[2:4], byteorder='little')
-            price = price_raw / 100.0
-
-            return {
-                'currency_code': currency,
-                'currency_name': CURRENCY_MAP.get(currency, "Unknown"),
-                'currency_symbol': CURRENCY_SYMBOLS.get(currency, ""),
-                'price': price
-            }
-        
-        except BleakError as e:
-            _LOGGER.error("BLE error reading energy unit configuratio: %s", e)
-            self.client = None
+        # Read raw data from device
+        data = await self._ble_read(ENERGY_UNIT_UUID, "energy unit configuration")
+        if not data:
             return None
 
-        except Exception as e:
-            _LOGGER.error("Failed to read energy unit configuration: %s", e)
+        if len(data) < 4:
+            _LOGGER.error("Invalid energy unit data length: %d", len(data))
             return None
+
+        # Parse currency (first byte)
+        currency = data[0]
+
+        # Parse price (bytes 2-3 as unsigned int16, scaled by 100)
+        price_raw = int.from_bytes(data[2:4], byteorder='little')
+        price = price_raw / 100.0
+
+        return {
+            'currency_code': currency,
+            'currency_name': CURRENCY_MAP.get(currency, "Unknown"),
+            'currency_symbol': CURRENCY_SYMBOLS.get(currency, ""),
+            'price': price
+        }
 
     async def write_energy_unit(self, currency: int, price: float) -> bool:
         """Write energy unit configuration to device."""
 
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-            
-            if not (0 <= price <= 655.35):
-                _LOGGER.error("Price must be between 0 and 655.35: %s", price)
-                return False
-
-            # Prepare data packet
-            data = bytearray(4)
-            data[0] = currency  # Currency code
-            data[1] = 0  # Unused byte
-
-            # Convert price to integer scaled by 100
-            price_raw = int(price * 100)
-            data[2:4] = price_raw.to_bytes(2, byteorder='little')
-
-            # Write to device
-            await self.client.write_gatt_char(ENERGY_UNIT_UUID, data, response=True)
-            
-            _LOGGER.debug(
-                "Wrote energy unit config for %s (%s) - Currency: %s (%d), Price: %.2f",
-                self.device_name, self.mac_address,
-                CURRENCY_MAP.get(currency, "Unknown"), currency, price
-            )
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing energy unit configuration: %s", e)
-            self.client = None
-            return None
-
-        except Exception as e:
-            _LOGGER.error("Failed to write energy unit configuration: %s", e)
+        if not (0 <= price <= 655.35):
+            _LOGGER.error("Price must be between 0 and 655.35: %s", price)
             return False
+
+        # Prepare data packet
+        data = bytearray(4)
+        data[0] = currency  # Currency code
+        data[1] = 0  # Unused byte
+
+        # Convert price to integer scaled by 100
+        price_raw = int(price * 100)
+        data[2:4] = price_raw.to_bytes(2, byteorder='little')
+
+        # Write to device
+        if not await self._ble_write(ENERGY_UNIT_UUID, data, "energy unit configuration"):
+            return False
+
+        _LOGGER.debug(
+            "Wrote energy unit config for %s (%s) - Currency: %s (%d), Price: %.2f",
+            self.device_name, self.mac_address,
+            CURRENCY_MAP.get(currency, "Unknown"), currency, price
+        )
+        return True
 
     async def read_power_consumption(self) -> dict:
         """Read real time power consumption data.
