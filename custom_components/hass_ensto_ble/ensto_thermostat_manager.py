@@ -166,6 +166,66 @@ class EnstoThermostatManager:
         if not self.client or not self.client.is_connected:
             await self.connect()
 
+    async def _ble_read(self, uuid: str, label: str = "") -> Optional[bytes]:
+        """Read a single GATT characteristic.
+
+        Not suitable for split-packet characteristics; use read_split_characteristic() for those.
+
+        Args:
+            uuid:  UUID of the GATT characteristic to read.
+            label: Human-readable name for log messages, e.g. "boost config".
+                   Falls back to the UUID string when omitted.
+
+        Returns:
+            Raw bytes from the characteristic, or None on any failure.
+        """
+        name = label or uuid
+
+        if not self.client or not self.client.is_connected:
+            _LOGGER.error("Device not connected, cannot read %s.", name)
+            return None
+
+        try:
+            return await self.client.read_gatt_char(uuid)
+        except BleakError as e:
+            _LOGGER.error("BLE error reading %s: %s", name, e)
+            self.client = None
+            return None
+        except Exception as e:
+            _LOGGER.error("Failed to read %s: %s", name, e)
+            return None
+
+    async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
+        """Write a single GATT characteristic with response=True.
+
+        Not suitable for split-packet characteristics; use write_split_characteristic() for those.
+
+        Args:
+            uuid:  UUID of the GATT characteristic to write.
+            data:  Payload bytes to send.
+            label: Human-readable name for log messages, e.g. "boost config".
+                   Falls back to the UUID string when omitted.
+
+        Returns:
+            True on success, False on any failure.
+        """
+        name = label or uuid
+
+        if not self.client or not self.client.is_connected:
+            _LOGGER.error("Device not connected, cannot write %s.", name)
+            return False
+
+        try:
+            await self.client.write_gatt_char(uuid, data, response=True)
+            return True
+        except BleakError as e:
+            _LOGGER.error("BLE error writing %s: %s", name, e)
+            self.client = None
+            return False
+        except Exception as e:
+            _LOGGER.error("Failed to write %s: %s", name, e)
+            return False
+
     async def write_device_info(self, device_address: str, factory_reset_id: int) -> None:
         """Write device info to Home Assistant storage."""
         await self.storage_manager.async_save_device_data(device_address, factory_reset_id)
