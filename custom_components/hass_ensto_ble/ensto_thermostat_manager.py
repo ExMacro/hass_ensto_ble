@@ -550,111 +550,53 @@ class EnstoThermostatManager:
 
     async def read_heating_mode(self) -> dict:
         """Read heating mode configuration from device."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(HEATING_MODE_UUID)
-
-            # Get mode number from first byte
-            mode_number = data[0]
-            mode_name = MODE_MAP.get(mode_number, "Unknown")
-
-            return {
-                'mode_number': mode_number,
-                'mode_name': mode_name
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading heating mode: %s", e)
-            self.client = None
+        data = await self._ble_read(HEATING_MODE_UUID, "heating mode")
+        if not data:
             return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to read heating mode: %s", e)
-            return None
+
+        # Get mode number from first byte
+        mode_number = data[0]
+        mode_name = MODE_MAP.get(mode_number, "Unknown")
+
+        return {
+            'mode_number': mode_number,
+            'mode_name': mode_name
+        }
 
     async def write_heating_mode(self, mode: int) -> bool:
         """Write heating mode configuration to device."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-
-            # Validate input mode
-            if mode not in MODE_MAP:
-                raise ValueError(
-                    "Invalid mode. Must be: "
-                    "1 (Floor), 2 (Room), 3 (Combination), "
-                    "4 (Power), or 5 (Force Control)"
-                )
-
-            # Pack data - just a single byte
-            data = bytes([mode])
-            
-            # Write to device
-            await self.client.write_gatt_char(HEATING_MODE_UUID, data, response=True)
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing heating mode: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write heating mode: %s", e)
+        # Validate input mode
+        if mode not in MODE_MAP:
+            _LOGGER.error(
+                "Invalid heating mode %s. Must be: "
+                "1 (Floor), 2 (Room), 3 (Combination), "
+                "4 (Power), or 5 (Force Control)",
+                mode
+            )
             return False
+
+        # Pack data - just a single byte
+        return await self._ble_write(HEATING_MODE_UUID, bytes([mode]), "heating mode")
 
     async def read_adaptive_temp_control(self) -> dict:
         """Read adaptive temperature control setting from device."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(ADAPTIVE_TEMPERATURE_CONTROL_UUID)
-
-            # Parse first byte as boolean
-            enabled = bool(data[0])
-
-            return {
-                'enabled': enabled
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading adaptive temperature control: %s", e)
-            self.client = None
+        data = await self._ble_read(ADAPTIVE_TEMPERATURE_CONTROL_UUID, "adaptive temperature control")
+        if not data:
             return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to read adaptive temperature control: %s", e)
-            return None
+
+        # Parse first byte as boolean
+        enabled = bool(data[0])
+
+        return {
+            'enabled': enabled
+        }
 
     async def write_adaptive_temp_control(self, enabled: bool) -> bool:
         """Write adaptive temperature control setting to device."""
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
+        # Create single byte data
+        data = bytes([1 if enabled else 0])
 
-            # Create single byte data
-            data = bytes([1 if enabled else 0])
-            
-            # Write to device
-            await self.client.write_gatt_char(ADAPTIVE_TEMPERATURE_CONTROL_UUID, data, response=True)
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing adaptive temperature control: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write adaptive temperature control: %s", e)
-            return False
+        return await self._ble_write(ADAPTIVE_TEMPERATURE_CONTROL_UUID, data, "adaptive temperature control")
 
     async def read_device_name(self) -> Optional[str]:
         """
@@ -1167,28 +1109,16 @@ class EnstoThermostatManager:
                 heating_power (int): Heating power in Watts (range 0-9999)
         """
 
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(HEATING_POWER_UUID)
-            
-            heating_power = int.from_bytes(data[0:2], byteorder='little')
-
-            return {
-                'heating_power': heating_power
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading custom heating power value: %s", e)
-            self.client = None
+        # Read raw data from device
+        data = await self._ble_read(HEATING_POWER_UUID, "custom heating power value")
+        if not data:
             return None
 
-        except Exception as e:
-            _LOGGER.error("Failed to read custom heating power value: %s", e)
-            return None
+        heating_power = int.from_bytes(data[0:2], byteorder='little')
+
+        return {
+            'heating_power': heating_power
+        }
 
     async def write_heating_power(self, value: int) -> bool:
         """Write custom heating power configuration to device.
@@ -1204,25 +1134,9 @@ class EnstoThermostatManager:
             _LOGGER.error("Heating power value must be between 0 and 9999")
             return False
 
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-                
-            data = value.to_bytes(2, byteorder='little')
-            
-            await self.client.write_gatt_char(HEATING_POWER_UUID, data, response=True)
+        data = value.to_bytes(2, byteorder='little')
 
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing custom heating power value: %s", e)
-            self.client = None
-            return None
-
-        except Exception as e:
-            _LOGGER.error("Failed to write custom heating power value: %s", e)
-            return False
+        return await self._ble_write(HEATING_POWER_UUID, data, "custom heating power value")
 
     async def read_floor_area(self) -> dict:
         """Read custom floor area configuration from device.
@@ -1232,28 +1146,16 @@ class EnstoThermostatManager:
                 floor_area (int): Floor area in square meters (m²)
         """
             
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read raw data from device
-            data = await self.client.read_gatt_char(FLOOR_AREA_UUID)
-            
-            floor_area = int.from_bytes(data[0:2], byteorder='little')
-
-            return {
-                'floor_area': floor_area
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading custom floor area value: %s", e)
-            self.client = None
+        # Read raw data from device
+        data = await self._ble_read(FLOOR_AREA_UUID, "custom floor area value")
+        if not data:
             return None
 
-        except Exception as e:
-            _LOGGER.error("Failed to read custom floor area value: %s", e)
-            return None
+        floor_area = int.from_bytes(data[0:2], byteorder='little')
+
+        return {
+            'floor_area': floor_area
+        }
 
     async def write_floor_area(self, value: int) -> bool:
         """Write custom floor area configuration to device.
@@ -1272,25 +1174,9 @@ class EnstoThermostatManager:
             _LOGGER.error("Floor area value must be between 0 and 65535 for uint16_t")
             return False
 
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-                
-            data = value.to_bytes(2, byteorder='little')
-            
-            await self.client.write_gatt_char(FLOOR_AREA_UUID, data, response=True)
+        data = value.to_bytes(2, byteorder='little')
 
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing custom floor area value: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write custom floor area value: %s", e)
-            return False
+        return await self._ble_write(FLOOR_AREA_UUID, data, "custom floor area value")
 
     async def read_energy_unit(self) -> dict:
         """Read energy unit configuration from device.
@@ -1726,24 +1612,14 @@ class EnstoThermostatManager:
         Returns:
             dict with key 'enabled' (bool) or None if failed
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-
-            # Read single byte from device
-            data = await self.client.read_gatt_char(CALENDAR_MODE_UUID)
-            enabled = bool(data[0])
-
-            return {'enabled': enabled}
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading calendar mode: %s", e)
-            self.client = None
+        # Read single byte from device
+        data = await self._ble_read(CALENDAR_MODE_UUID, "calendar mode")
+        if not data:
             return None
-        except Exception as e:
-            _LOGGER.error("Failed to read calendar mode: %s", e)
-            return None
+
+        enabled = bool(data[0])
+
+        return {'enabled': enabled}
 
     async def write_calendar_mode(self, enabled: bool) -> bool:
         """Write calendar mode setting to device.
@@ -1754,28 +1630,16 @@ class EnstoThermostatManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
+        # Create single byte data
+        data = bytes([1 if enabled else 0])
 
-            # Create single byte data
-            data = bytes([1 if enabled else 0])
-            
-            # Write to device
-            await self.client.write_gatt_char(CALENDAR_MODE_UUID, data, response=True)
-            
-            _LOGGER.debug("Action [Calendar Mode %s] for [%s]: success",
-                         "Enable" if enabled else "Disable", self.mac_address)
-            return True
+        # Write to device
+        if not await self._ble_write(CALENDAR_MODE_UUID, data, "calendar mode"):
+            return False
 
-        except BleakError as e:
-            _LOGGER.error("BLE error writing calendar mode: %s", e)
-            self.client = None
-            return False
-        except Exception as e:
-            _LOGGER.error("Failed to write calendar mode: %s", e)
-            return False
+        _LOGGER.debug("Action [Calendar Mode %s] for [%s]: success",
+                     "Enable" if enabled else "Disable", self.mac_address)
+        return True
 
     async def read_calendar_day(self, day: int) -> Optional[dict]:
         """Read calendar day programs from device.
