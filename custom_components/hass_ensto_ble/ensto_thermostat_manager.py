@@ -872,24 +872,14 @@ class EnstoThermostatManager:
                 high_value: Max floor temp in °C (range 13-50)
             None if read fails
         """
-        try:
-            data = await self.client.read_gatt_char(FLOOR_LIMITS_UUID)
-            if not data or len(data) != 4:
-                return None
-                   
-            return {
-                'low_value': int.from_bytes(data[0:2], byteorder='little') / 100,
-                'high_value': int.from_bytes(data[2:4], byteorder='little') / 100
-            }
+        data = await self._ble_read(FLOOR_LIMITS_UUID, "floor limits")
+        if not data or len(data) != 4:
+            return None
 
-        except BleakError as e:
-            _LOGGER.error("BLE error reading floor limits: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to read floor limits: %s", e)
-            return None
+        return {
+            'low_value': int.from_bytes(data[0:2], byteorder='little') / 100,
+            'high_value': int.from_bytes(data[2:4], byteorder='little') / 100
+        }
 
     async def write_floor_limits(self, low_value: float, high_value: float) -> bool:
         """Write floor temperature limits to device.
@@ -907,42 +897,34 @@ class EnstoThermostatManager:
             - Min absolute value: 5°C
             - Max absolute value: 50°C
         """
-        try:
-            # Input validation
-            if not (5 <= low_value <= 42):
-                _LOGGER.error("Min floor temp must be between 5-42°C")
-                return False
-                  
-            if not (13 <= high_value <= 50):
-                _LOGGER.error("Max floor temp must be between 13-50°C")
-                return False
-                  
-            if high_value - low_value < 8:
-                _LOGGER.error("Min must be at least 8°C lower than max")
-                return False
-                   
-            data = bytearray(4)
-            low_raw = int(low_value * 100)
-            high_raw = int(high_value * 100)
-            data[0:2] = low_raw.to_bytes(2, byteorder='little')
-            data[2:4] = high_raw.to_bytes(2, byteorder='little')
-               
-            await self.client.write_gatt_char(FLOOR_LIMITS_UUID, data)
-            _LOGGER.debug(
-                "Floor limits written successfully: min=%.1f °C, max=%.1f °C",
-                low_value,
-                high_value
-            )
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing floor limits: %s", e)
-            self.client = None
-            return None
-        
-        except Exception as e:
-            _LOGGER.error("Failed to write floor limits: %s", e)
+        # Input validation
+        if not (5 <= low_value <= 42):
+            _LOGGER.error("Min floor temp must be between 5-42°C")
             return False
+
+        if not (13 <= high_value <= 50):
+            _LOGGER.error("Max floor temp must be between 13-50°C")
+            return False
+
+        if high_value - low_value < 8:
+            _LOGGER.error("Min must be at least 8°C lower than max")
+            return False
+
+        data = bytearray(4)
+        low_raw = int(low_value * 100)
+        high_raw = int(high_value * 100)
+        data[0:2] = low_raw.to_bytes(2, byteorder='little')
+        data[2:4] = high_raw.to_bytes(2, byteorder='little')
+
+        if not await self._ble_write(FLOOR_LIMITS_UUID, data, "floor limits"):
+            return False
+
+        _LOGGER.debug(
+            "Floor limits written successfully: min=%.1f °C, max=%.1f °C",
+            low_value,
+            high_value
+        )
+        return True
 
     async def read_room_sensor_calibration(self) -> dict:
         """Read room sensor calibration value."""
