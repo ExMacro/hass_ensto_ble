@@ -420,23 +420,15 @@ class EnstoThermostatManager:
 
     async def read_model_number(self) -> Optional[str]:
         """Read model number via GATT characteristic."""
-        try:
-            if not self.client or not self.client.is_connected:
-                return None
-                
-            # Read the raw bytes
-            model_number_raw = await self.client.read_gatt_char(MODEL_NUMBER_UUID)
-
-            # Decode using UTF-8
-            model_number = model_number_raw.decode('utf-8')
-            return model_number
-            
-        except BleakError as e:
-            _LOGGER.error("BLE error reading model number: %s", e)
-            self.client = None
+        # Read the raw bytes
+        model_number_raw = await self._ble_read(MODEL_NUMBER_UUID, "model number")
+        if model_number_raw is None:
             return None
-            
-        except Exception as e:
+
+        # Decode using UTF-8
+        try:
+            return model_number_raw.decode('utf-8')
+        except UnicodeDecodeError as e:
             _LOGGER.error("Failed to read model number: %s", e)
             return None
 
@@ -585,30 +577,22 @@ class EnstoThermostatManager:
         Returns:
             str - Device name if successful, None if failed or device is unnamed
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                return None
-                
-            # Read the raw bytes
-            raw_data = await self.client.read_gatt_char(DEVICE_NAME_UUID)
-            
-            # Skip first byte and strip null bytes
-            name_bytes = raw_data[1:].split(b'\x00')[0]
-            
-            # If no actual name data, return None
-            if not name_bytes:
-                return None
-                
-            # Decode using UTF-8 to handle Nordic characters
-            device_name = name_bytes.decode('utf-8')
-            return device_name
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading device name: %s", e)
-            self.client = None
+        # Read the raw bytes
+        raw_data = await self._ble_read(DEVICE_NAME_UUID, "device name")
+        if raw_data is None:
             return None
-        
-        except Exception as e:
+
+        # Skip first byte and strip null bytes
+        name_bytes = raw_data[1:].split(b'\x00')[0]
+
+        # If no actual name data, return None
+        if not name_bytes:
+            return None
+
+        # Decode using UTF-8 to handle Nordic characters
+        try:
+            return name_bytes.decode('utf-8')
+        except UnicodeDecodeError as e:
             _LOGGER.error("Failed to read device name: %s", e)
             return None
 
@@ -952,39 +936,25 @@ class EnstoThermostatManager:
 
     async def read_software_revision(self) -> Optional[str]:
         """Read software revision string."""
-        try:
-            if not self.client or not self.client.is_connected:
-                return None
-            data = await self.client.read_gatt_char(SOFTWARE_REVISION_UUID)
-            # Parse format: app;ble;bootloader
-            return data.decode('utf-8')
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading software revision: %s", e)
-            self.client = None
+        data = await self._ble_read(SOFTWARE_REVISION_UUID, "software revision")
+        if data is None:
             return None
-        
-        except Exception as e:
+
+        # Parse format: app;ble;bootloader
+        try:
+            return data.decode('utf-8')
+        except UnicodeDecodeError as e:
             _LOGGER.error("Failed to read software revision: %s", e)
             return None
 
     async def read_hardware_revision(self) -> Optional[str]:
         """Read hardware revision."""
-        try:
-            if not self.client or not self.client.is_connected:
-                return None
-            data = await self.client.read_gatt_char(HARDWARE_REVISION_UUID)
-            hw_version = int.from_bytes(data[0:4], byteorder='little')
-            return str(hw_version)
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading hardware revision: %s", e)
-            self.client = None
+        data = await self._ble_read(HARDWARE_REVISION_UUID, "hardware revision")
+        if data is None:
             return None
 
-        except Exception as e:
-            _LOGGER.error("Failed to read hardware revision: %s", e)
-            return None
+        hw_version = int.from_bytes(data[0:4], byteorder='little')
+        return str(hw_version)
 
     async def read_heating_power(self) -> dict:
         """Read custom heating power configuration from device.
