@@ -1697,76 +1697,63 @@ class EnstoThermostatManager:
             - 5 = Temperature (absolute target, uses byte[8-9])
             - 6 = Temperature change (offset from normal, uses byte[12-13])
         """
-        try:
-            await self.ensure_connection()
+        data = await self._ble_read(FORCE_CONTROL_UUID, "force control")
+        if data is None:
+            return None
 
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
+        device_name = self.device_name or "Unknown Device"
 
-            data = await self.client.read_gatt_char(FORCE_CONTROL_UUID)
-            device_name = self.device_name or "Unknown Device"
+        if len(data) >= 19:
+            # Extended 19-byte format
+            mode = data[17]
 
-            if len(data) >= 19:
-                # Extended 19-byte format
-                mode = data[17]
+            # Mode 5 "Temperature": absolute temperature in byte[8-9]
+            temp_raw = int.from_bytes(data[8:10], byteorder='little')
+            temperature = temp_raw / 10.0
 
-                # Mode 5 "Temperature": absolute temperature in byte[8-9]
-                temp_raw = int.from_bytes(data[8:10], byteorder='little')
-                temperature = temp_raw / 10.0
+            # Mode 6 "Temperature change": offset in byte[12-13] (signed)
+            offset_raw = int.from_bytes(data[12:14], byteorder='little', signed=True)
+            temperature_offset = offset_raw / 10.0
 
-                # Mode 6 "Temperature change": offset in byte[12-13] (signed)
-                offset_raw = int.from_bytes(data[12:14], byteorder='little', signed=True)
-                temperature_offset = offset_raw / 10.0
+            mode_names = EXTERNAL_CONTROL_MODES
 
-                mode_names = EXTERNAL_CONTROL_MODES
-
-                _LOGGER.debug(
-                    "Read Force Control %s for %s: mode=%s, temp=%.1f°C, offset=%+.1f°C",
-                    device_name, self.mac_address,
-                    mode_names.get(mode, "Unknown"),
-                    temperature, temperature_offset
-                )
-
-                return {
-                    'enabled': mode in (5, 6),
-                    'mode': mode,
-                    'mode_name': EXTERNAL_CONTROL_MODES.get(mode, "Unknown"),
-                    'temperature': temperature,
-                    'temperature_offset': temperature_offset,
-                    'data_length': len(data)
-                }
-
-            elif len(data) == 1:
-                # Original 1-byte format (potentiometer value only 0-100%)
-                _LOGGER.debug(
-                    "Read Force Control %s for %s: legacy 1-byte format, value=%d%%",
-                    device_name, self.mac_address, data[0]
-                )
-
-                return {
-                    'enabled': False,
-                    'mode': 1,
-                    'mode_name': "Off",
-                    'temperature': 20.0,
-                    'temperature_offset': 0.0,
-                    'data_length': len(data)
-                }
-
-            _LOGGER.error(
-                "Read Force Control %s for %s: unexpected data length %d",
-                device_name, self.mac_address, len(data)
+            _LOGGER.debug(
+                "Read Force Control %s for %s: mode=%s, temp=%.1f°C, offset=%+.1f°C",
+                device_name, self.mac_address,
+                mode_names.get(mode, "Unknown"),
+                temperature, temperature_offset
             )
-            return None
 
-        except BleakError as e:
-            _LOGGER.error("BLE error reading force control: %s", e)
-            self.client = None
-            return None
+            return {
+                'enabled': mode in (5, 6),
+                'mode': mode,
+                'mode_name': EXTERNAL_CONTROL_MODES.get(mode, "Unknown"),
+                'temperature': temperature,
+                'temperature_offset': temperature_offset,
+                'data_length': len(data)
+            }
 
-        except Exception as e:
-            _LOGGER.error("Failed to read force control: %s", e)
-            return None
+        elif len(data) == 1:
+            # Original 1-byte format (potentiometer value only 0-100%)
+            _LOGGER.debug(
+                "Read Force Control %s for %s: legacy 1-byte format, value=%d%%",
+                device_name, self.mac_address, data[0]
+            )
+
+            return {
+                'enabled': False,
+                'mode': 1,
+                'mode_name': "Off",
+                'temperature': 20.0,
+                'temperature_offset': 0.0,
+                'data_length': len(data)
+            }
+
+        _LOGGER.error(
+            "Read Force Control %s for %s: unexpected data length %d",
+            device_name, self.mac_address, len(data)
+        )
+        return None
 
     async def write_force_control(self, mode: int, temperature: float, temperature_offset: float) -> bool:
         """Write force control / external control configuration to device.
@@ -1780,65 +1767,50 @@ class EnstoThermostatManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            await self.ensure_connection()
+        device_name = self.device_name or "Unknown Device"
 
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-
-            device_name = self.device_name or "Unknown Device"
-
-            # Read current values to preserve unchanged settings
-            current = await self.client.read_gatt_char(FORCE_CONTROL_UUID)
-            if not current:
-                _LOGGER.error(
-                    "Write Force Control %s for %s: could not read current settings",
-                    device_name, self.mac_address
-                )
-                return False
-
-            # Check for legacy 1-byte format (old firmware)
-            if len(current) < 19:
-                _LOGGER.debug(
-                    "Write Force Control %s for %s: device uses legacy 1-byte format, external control not supported",
-                    device_name, self.mac_address
-                )
-                return False
-
-            # Start with current data
-            data = bytearray(current)
-
-            # Update mode 5 temperature (byte[8-9])
-            temp_value = int(max(5.0, min(35.0, temperature)) * 10)
-            data[8:10] = temp_value.to_bytes(2, byteorder='little')
-
-            # Update mode 6 offset (byte[12-13], signed)
-            offset_value = int(max(-20.0, min(20.0, temperature_offset)) * 10)
-            data[12:14] = offset_value.to_bytes(2, byteorder='little', signed=True)
-
-            # Set mode
-            if mode in EXTERNAL_CONTROL_MODES:
-                data[17] = mode
-
-            await self.client.write_gatt_char(FORCE_CONTROL_UUID, data, response=True)
-
-            mode_names = {2: "Off", 5: "Temperature", 6: "Temperature change"}
-
-            _LOGGER.debug(
-                "Wrote Force Control %s for %s: mode=%s, temp=%.1f°C, offset=%+.1f°C",
-                device_name, self.mac_address,
-                mode_names.get(data[17], "Unknown"),
-                temperature, temperature_offset
+        # Read current values to preserve unchanged settings
+        current = await self._ble_read(FORCE_CONTROL_UUID, "force control")
+        if not current:
+            _LOGGER.error(
+                "Write Force Control %s for %s: could not read current settings",
+                device_name, self.mac_address
             )
-
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing force control: %s", e)
-            self.client = None
             return False
 
-        except Exception as e:
-            _LOGGER.error("Failed to write force control: %s", e)
+        # Check for legacy 1-byte format (old firmware)
+        if len(current) < 19:
+            _LOGGER.debug(
+                "Write Force Control %s for %s: device uses legacy 1-byte format, external control not supported",
+                device_name, self.mac_address
+            )
             return False
+
+        # Start with current data
+        data = bytearray(current)
+
+        # Update mode 5 temperature (byte[8-9])
+        temp_value = int(max(5.0, min(35.0, temperature)) * 10)
+        data[8:10] = temp_value.to_bytes(2, byteorder='little')
+
+        # Update mode 6 offset (byte[12-13], signed)
+        offset_value = int(max(-20.0, min(20.0, temperature_offset)) * 10)
+        data[12:14] = offset_value.to_bytes(2, byteorder='little', signed=True)
+
+        # Set mode
+        if mode in EXTERNAL_CONTROL_MODES:
+            data[17] = mode
+
+        if not await self._ble_write(FORCE_CONTROL_UUID, data, "force control"):
+            return False
+
+        mode_names = {2: "Off", 5: "Temperature", 6: "Temperature change"}
+
+        _LOGGER.debug(
+            "Wrote Force Control %s for %s: mode=%s, temp=%.1f°C, offset=%+.1f°C",
+            device_name, self.mac_address,
+            mode_names.get(data[17], "Unknown"),
+            temperature, temperature_offset
+        )
+
+        return True
