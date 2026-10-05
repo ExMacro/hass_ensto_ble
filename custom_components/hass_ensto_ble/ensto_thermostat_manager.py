@@ -1346,148 +1346,137 @@ class EnstoThermostatManager:
 
     async def read_vacation_time(self) -> Optional[dict]:
         """Read vacation time configuration from device."""
-        try:
-            data = await self.client.read_gatt_char(VACATION_TIME_UUID)
-            
-            if not data or len(data) < 15:
-                _LOGGER.error("Invalid vacation time data length")
-                return None
+        data = await self._ble_read(VACATION_TIME_UUID, "vacation time")
+        if data is None:
+            return None
 
+        if len(data) < 15:
+            _LOGGER.error("Invalid vacation time data length")
+            return None
+
+        try:
             # Parse wall clock time from device
             from_year = 2000 + data[0]
             from_month = data[1]
             from_day = data[2]
             from_hour = data[3]
             from_minute = data[4]
-            
+
             # Create wall clock time as naive datetime
             time_from_naive = datetime(from_year, from_month, from_day, from_hour, from_minute)
             # Assume it's local time and convert to UTC for Home Assistant
             time_from = dt_util.as_utc(dt_util.as_local(time_from_naive))
-            
+
             # Parse time to wall clock time
             to_year = 2000 + data[5]
             to_month = data[6]
             to_day = data[7]
             to_hour = data[8]
             to_minute = data[9]
-            
+
             # Create wall clock time as naive datetime
             time_to_naive = datetime(to_year, to_month, to_day, to_hour, to_minute)
             # Assume it's local time and convert to UTC for Home Assistant
             time_to = dt_util.as_utc(dt_util.as_local(time_to_naive))
-
-            # Parse temperature offset
-            offset_temp_raw = int.from_bytes(data[10:12], byteorder='little', signed=True)
-            offset_temperature = offset_temp_raw / 100
-            
-            # Parse remaining fields
-            # Convert percentage offset byte to signed int (range -128 to 127)
-            offset_percentage = int.from_bytes([data[12]], byteorder='little', signed=True)
-            enabled = bool(data[13])
-            active = bool(data[14])
-
-            return {
-                'time_from': time_from,
-                'time_to': time_to,
-                'offset_temperature': offset_temperature,
-                'offset_percentage': offset_percentage,
-                'enabled': enabled,
-                'active': active,
-                'raw_data': data.hex()  # Include raw data for logging
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading vacation time: %s", e)
-            self.client = None
-            return None
-
-        except Exception as e:
+        except ValueError as e:
             _LOGGER.error("Error reading vacation time: %s", e)
             return None
 
+        # Parse temperature offset
+        offset_temp_raw = int.from_bytes(data[10:12], byteorder='little', signed=True)
+        offset_temperature = offset_temp_raw / 100
+
+        # Parse remaining fields
+        # Convert percentage offset byte to signed int (range -128 to 127)
+        offset_percentage = int.from_bytes([data[12]], byteorder='little', signed=True)
+        enabled = bool(data[13])
+        active = bool(data[14])
+
+        return {
+            'time_from': time_from,
+            'time_to': time_to,
+            'offset_temperature': offset_temperature,
+            'offset_percentage': offset_percentage,
+            'enabled': enabled,
+            'active': active,
+            'raw_data': data.hex()  # Include raw data for logging
+        }
+
     async def write_vacation_time(
-       self,
-       time_from: datetime,
-       time_to: datetime,
-       offset_temperature: float,
-       offset_percentage: int,
-       enabled: bool
+        self,
+        time_from: datetime,
+        time_to: datetime,
+        offset_temperature: float,
+        offset_percentage: int,
+        enabled: bool
     ) -> bool:
-       """Write vacation time configuration to device.
-       
-       Args:
-           time_from (datetime): Start time of vacation (UTC)
-           time_to (datetime): End time of vacation (UTC)
-           offset_temperature (float): Temperature offset in degrees (-20 to +20)
-           offset_percentage (int): Percentage offset (-100% to 100%)
-           enabled (bool): Enable/disable vacation mode
-       """
-       try:
-           # Read current settings to preserve active state
-           current_settings = await self.read_vacation_time()
-           current_active = False
-           if current_settings and 'active' in current_settings:
-               current_active = current_settings['active']
-               
-           # Validate input ranges
-           if not (-20 <= offset_temperature <= 20):
-               raise ValueError("Temperature offset must be between -20 and +20")
-               
-           if not (-100 <= offset_percentage <= 100):
-               raise ValueError("Percentage offset must be between -100 and 100")
+        """Write vacation time configuration to device.
 
-           # Convert UTC times to local (wall clock) times
-           local_from = dt_util.as_local(time_from)
-           local_to = dt_util.as_local(time_to)
-           
-           # Format for device (remove timezone info)
-           from_year = local_from.year - 2000
-           if not (0 <= from_year <= 255):
-               raise ValueError(f"Start year must be between 2000-2255, got {local_from.year}")
-               
-           to_year = local_to.year - 2000
-           if not (0 <= to_year <= 255):
-               raise ValueError(f"End year must be between 2000-2255, got {local_to.year}")
+        Args:
+            time_from (datetime): Start time of vacation (UTC)
+            time_to (datetime): End time of vacation (UTC)
+            offset_temperature (float): Temperature offset in degrees (-20 to +20)
+            offset_percentage (int): Percentage offset (-100% to 100%)
+            enabled (bool): Enable/disable vacation mode
+        """
+        # Validate input ranges
+        if not (-20 <= offset_temperature <= 20):
+            _LOGGER.error("Temperature offset must be between -20 and +20: %s", offset_temperature)
+            return False
 
-           # Create data packet
-           data = bytearray(15)
-           
-           # Time from (local wall clock)
-           data[0] = from_year
-           data[1] = local_from.month
-           data[2] = local_from.day
-           data[3] = local_from.hour
-           data[4] = local_from.minute
-           
-           # Time to (local wall clock)
-           data[5] = to_year
-           data[6] = local_to.month
-           data[7] = local_to.day
-           data[8] = local_to.hour
-           data[9] = local_to.minute
+        if not (-100 <= offset_percentage <= 100):
+            _LOGGER.error("Percentage offset must be between -100 and 100: %s", offset_percentage)
+            return False
 
-           # Temperature offset
-           temp_raw = int(offset_temperature * 100)
-           data[10:12] = temp_raw.to_bytes(2, byteorder='little', signed=True)
-           
-           # Percentage and enabled
-           # Convert percentage offset to signed int8
-           data[12] = offset_percentage.to_bytes(1, byteorder='little', signed=True)[0]
-           data[13] = 1 if enabled else 0  # User-set enabled state - byte 13
-           data[14] = 1 if current_active else 0  # Preserve current active state - byte 14 (read only)
-           
-           await self.client.write_gatt_char(VACATION_TIME_UUID, data)
-           return True
+        # Convert UTC times to local (wall clock) times
+        local_from = dt_util.as_local(time_from)
+        local_to = dt_util.as_local(time_to)
 
-       except BleakError as e:
-           _LOGGER.error("BLE error writing vacation time: %s", e)
-           self.client = None
-           return None
+        # Format for device (remove timezone info)
+        from_year = local_from.year - 2000
+        if not (0 <= from_year <= 255):
+            _LOGGER.error("Start year must be between 2000-2255, got %s", local_from.year)
+            return False
 
-       except Exception as e:
-           _LOGGER.error("Error writing vacation time: %s", e)
-           return False
+        to_year = local_to.year - 2000
+        if not (0 <= to_year <= 255):
+            _LOGGER.error("End year must be between 2000-2255, got %s", local_to.year)
+            return False
+
+        # Read current settings to preserve active state
+        current_settings = await self.read_vacation_time()
+        current_active = False
+        if current_settings and 'active' in current_settings:
+            current_active = current_settings['active']
+
+        # Create data packet
+        data = bytearray(15)
+
+        # Time from (local wall clock)
+        data[0] = from_year
+        data[1] = local_from.month
+        data[2] = local_from.day
+        data[3] = local_from.hour
+        data[4] = local_from.minute
+
+        # Time to (local wall clock)
+        data[5] = to_year
+        data[6] = local_to.month
+        data[7] = local_to.day
+        data[8] = local_to.hour
+        data[9] = local_to.minute
+
+        # Temperature offset
+        temp_raw = int(offset_temperature * 100)
+        data[10:12] = temp_raw.to_bytes(2, byteorder='little', signed=True)
+
+        # Percentage and enabled
+        # Convert percentage offset to signed int8
+        data[12] = offset_percentage.to_bytes(1, byteorder='little', signed=True)[0]
+        data[13] = 1 if enabled else 0  # User-set enabled state - byte 13
+        data[14] = 1 if current_active else 0  # Preserve current active state - byte 14 (read only)
+
+        return await self._ble_write(VACATION_TIME_UUID, data, "vacation time")
 
     async def read_calendar_mode(self) -> Optional[dict]:
         """Read calendar mode setting from device.
