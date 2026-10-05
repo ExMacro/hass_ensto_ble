@@ -9,7 +9,7 @@ from homeassistant.helpers import device_registry as dr
 
 from .base_entity import EnstoBaseEntity
 from .const import (
-    SCAN_INTERVAL, FLOOR_SENSOR_TYPE_UUID,
+    SCAN_INTERVAL,
     FLOOR_SENSOR_CONFIG, MODE_MAP, SUPPORTED_MODES_ECO16, SUPPORTED_MODES_ELTE6,
     EXTERNAL_CONTROL_MODES,
 )
@@ -134,46 +134,28 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
        """Change floor sensor type."""
        try:
            if option in FLOOR_SENSOR_CONFIG:
-               params = FLOOR_SENSOR_CONFIG[option]
-               
-               # Create new configuration
-               new_config = bytearray(13)
-               new_config[0] = params["sensor_type"]
-               new_config[1:3] = params["sensor_missing_limit"].to_bytes(2, byteorder='little')
-               new_config[3:5] = params["sensor_b_value"].to_bytes(2, byteorder='little')
-               new_config[5:7] = params["pull_up_resistor"].to_bytes(2, byteorder='little')
-               new_config[7:9] = params["sensor_broken_limit"].to_bytes(2, byteorder='little')
-               new_config[9:11] = params["resistance_25c"].to_bytes(2, byteorder='little')
-               new_config[11:13] = params["offset"].to_bytes(2, byteorder='little', signed=True)
-               
                # Write configuration to device
-               await self._manager.client.write_gatt_char(
-                   FLOOR_SENSOR_TYPE_UUID,
-                   new_config,
-                   response=True
-               )
+               if await self._manager.write_floor_sensor_config(FLOOR_SENSOR_CONFIG[option]):
+                   # Log successful configuration change
+                   _LOGGER.debug(
+                       "Floor sensor configuration successfully changed."
+                   )
 
-               # Log successful configuration change
-               _LOGGER.debug(
-                   "Floor sensor configuration successfully changed."
-               )
-               
-               self._current_type = option
-                       
+                   self._current_type = option
+
        except Exception as e:
            _LOGGER.error("Error setting floor sensor type: %s", e)
 
     async def async_update(self) -> None:
         """Update floor sensor type."""
         try:
-            result = await self._manager.client.read_gatt_char(FLOOR_SENSOR_TYPE_UUID)
-            if result:
-                # Parse all values
-                sensor_type = result[0]
-                sensor_missing_limit = int.from_bytes(result[1:3], byteorder='little')
-                sensor_broken_limit = int.from_bytes(result[7:9], byteorder='little')
-                resistance_25c = int.from_bytes(result[9:11], byteorder='little')
-                offset = int.from_bytes(result[11:13], byteorder='little', signed=True) / 10  # Convert to actual decimal value
+            config = await self._manager.read_floor_sensor_config()
+            if config:
+                sensor_type = config['sensor_type']
+                sensor_missing_limit = config['sensor_missing_limit']
+                sensor_broken_limit = config['sensor_broken_limit']
+                resistance_25c = config['resistance_25c']
+                offset = config['offset']
 
                 # Log all values in debug
                 _LOGGER.debug(

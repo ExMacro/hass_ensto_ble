@@ -31,6 +31,7 @@ from .const import (
     HEATING_MODE_UUID,
     BOOST_UUID,
     FLOOR_LIMITS_UUID,
+    FLOOR_SENSOR_TYPE_UUID,
     ADAPTIVE_TEMPERATURE_CONTROL_UUID,
     HEATING_POWER_UUID,
     FLOOR_AREA_UUID,
@@ -909,6 +910,54 @@ class EnstoThermostatManager:
             high_value
         )
         return True
+
+    async def read_floor_sensor_config(self) -> Optional[dict]:
+        """Read floor sensor configuration from device.
+
+        Returns:
+            dict with keys:
+                sensor_type (int): Floor sensor type number
+                sensor_missing_limit (int): ADC limit for missing sensor
+                sensor_broken_limit (int): ADC limit for broken sensor
+                resistance_25c (int): Sensor resistance at 25 °C in ohms
+                offset (float): Sensor offset in °C
+            None if read fails
+        """
+        data = await self._ble_read(FLOOR_SENSOR_TYPE_UUID, "floor sensor config")
+        if not data:
+            return None
+
+        if len(data) < 13:
+            _LOGGER.error("Invalid floor sensor config data length: %d", len(data))
+            return None
+
+        return {
+            'sensor_type': data[0],
+            'sensor_missing_limit': int.from_bytes(data[1:3], byteorder='little'),
+            'sensor_broken_limit': int.from_bytes(data[7:9], byteorder='little'),
+            'resistance_25c': int.from_bytes(data[9:11], byteorder='little'),
+            'offset': int.from_bytes(data[11:13], byteorder='little', signed=True) / 10
+        }
+
+    async def write_floor_sensor_config(self, params: dict) -> bool:
+        """Write floor sensor configuration to device.
+
+        Args:
+            params: Floor sensor parameters, one of the FLOOR_SENSOR_CONFIG entries
+
+        Returns:
+            True if write successful, False otherwise
+        """
+        data = bytearray(13)
+        data[0] = params["sensor_type"]
+        data[1:3] = params["sensor_missing_limit"].to_bytes(2, byteorder='little')
+        data[3:5] = params["sensor_b_value"].to_bytes(2, byteorder='little')
+        data[5:7] = params["pull_up_resistor"].to_bytes(2, byteorder='little')
+        data[7:9] = params["sensor_broken_limit"].to_bytes(2, byteorder='little')
+        data[9:11] = params["resistance_25c"].to_bytes(2, byteorder='little')
+        data[11:13] = params["offset"].to_bytes(2, byteorder='little', signed=True)
+
+        return await self._ble_write(FLOOR_SENSOR_TYPE_UUID, data, "floor sensor config")
 
     async def read_room_sensor_calibration(self) -> dict:
         """Read room sensor calibration value."""
