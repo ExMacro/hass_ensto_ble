@@ -1482,80 +1482,52 @@ class EnstoThermostatManager:
         Returns:
             dict with 'day' and 'programs' list, or None if failed
         """
-        try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return None
-                
-            if not (1 <= day <= 7):
-                _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
-                return None
-
-            # Write day number to control characteristic
-            await self.client.write_gatt_char(CALENDAR_CONTROL_UUID, bytes([day]), response=True)
-            
-            # Add small delay to let device process the request
-            await asyncio.sleep(0.2)
-            
-            # Read split data from calendar day characteristic
-            data = await self._ble_read_split(CALENDAR_DAY_UUID, "calendar day")
-            
-            if not data:
-                _LOGGER.error("No calendar day data received")
-                return None
-
-            # Parse day number
-            day_number = data[0]
-
-            # Calculate number of programs from data length
-            if len(data) == 1:
-                # Empty day
-                programs = []
-            elif (len(data) - 1) % 8 == 0:
-                # Valid program data: (length - 1) must be divisible by 8
-                program_count = (len(data) - 1) // 8
-                programs = []
-                
-                # Parse each program
-                for i in range(program_count):
-                    offset = 1 + i * 8  # Start after day byte, 8 bytes per program
-                    
-                    start_hour = data[offset]
-                    start_minute = data[offset + 1]
-                    end_hour = data[offset + 2]
-                    end_minute = data[offset + 3]
-                    temp_offset_raw = int.from_bytes(data[offset + 4:offset + 6], byteorder='little', signed=True)
-                    temp_offset = temp_offset_raw / 100.0  # Convert from device format (200 = 2.0°C)
-                    power_offset = int.from_bytes([data[offset + 6]], byteorder='little', signed=True)
-                    enabled = bool(data[offset + 7])
-                    
-                    program = {
-                        'start_hour': start_hour,
-                        'start_minute': start_minute,
-                        'end_hour': end_hour,
-                        'end_minute': end_minute,
-                        'temp_offset': temp_offset,
-                        'power_offset': power_offset,
-                        'enabled': enabled
-                    }
-                    programs.append(program)
-
-            else:
-                _LOGGER.error("Invalid calendar day data length: %d (not 1 + multiple of 8)", len(data))
-                return None
-
-            return {
-                'day': day_number,
-                'programs': programs
-            }
-
-        except BleakError as e:
-            _LOGGER.error("BLE error reading calendar day: %s", e)
-            self.client = None
+        if not (1 <= day <= 7):
+            _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
             return None
-        except Exception as e:
-            _LOGGER.error("Failed to read calendar day: %s", e)
+
+        # Write day number to control characteristic
+        if not await self._ble_write(CALENDAR_CONTROL_UUID, bytes([day]), "calendar control"):
             return None
+
+        # Add small delay to let device process the request
+        await asyncio.sleep(0.2)
+
+        # Read split data from calendar day characteristic
+        data = await self._ble_read_split(CALENDAR_DAY_UUID, "calendar day")
+        if not data:
+            _LOGGER.error("No calendar day data received")
+            return None
+
+        # Parse day number
+        day_number = data[0]
+
+        # Valid program data: (length - 1) must be divisible by 8
+        if (len(data) - 1) % 8 != 0:
+            _LOGGER.error("Invalid calendar day data length: %d (not 1 + multiple of 8)", len(data))
+            return None
+
+        # Parse each program (an empty day has no program bytes)
+        programs = []
+        for i in range((len(data) - 1) // 8):
+            offset = 1 + i * 8  # Start after day byte, 8 bytes per program
+
+            temp_offset_raw = int.from_bytes(data[offset + 4:offset + 6], byteorder='little', signed=True)
+
+            programs.append({
+                'start_hour': data[offset],
+                'start_minute': data[offset + 1],
+                'end_hour': data[offset + 2],
+                'end_minute': data[offset + 3],
+                'temp_offset': temp_offset_raw / 100.0,  # Convert from device format (200 = 2.0°C)
+                'power_offset': int.from_bytes([data[offset + 6]], byteorder='little', signed=True),
+                'enabled': bool(data[offset + 7])
+            })
+
+        return {
+            'day': day_number,
+            'programs': programs
+        }
 
     async def write_calendar_day(self, day: int, programs: list) -> bool:
         """Write calendar day programs to device.
@@ -1569,75 +1541,57 @@ class EnstoThermostatManager:
         Returns:
             True if successful, False otherwise
         """
+        if not (1 <= day <= 7):
+            _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
+            return False
+
+        if len(programs) > 6:
+            _LOGGER.error("Too many programs: %s (max 6)", len(programs))
+            return False
+
+        # Create 49-byte data packet; unused programs stay all zeros (disabled)
+        data = bytearray(49)
+        data[0] = day
+
         try:
-            if not self.client or not self.client.is_connected:
-                _LOGGER.error("Device not connected.")
-                return False
-                
-            if not (1 <= day <= 7):
-                _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
-                return False
-                
-            if len(programs) > 6:
-                _LOGGER.error("Too many programs: %s (max 6)", len(programs))
-                return False
-
-            # Create 49-byte data packet
-            data = bytearray(49)
-            data[0] = day
-            
-            # Fill programs (pad with zeroes if less than 6)
-            for i in range(6):
+            for i, program in enumerate(programs):
                 offset = 1 + i * 8
-                
-                if i < len(programs):
-                    program = programs[i]
-                    
-                    # Validate program data
-                    for field in ['start_hour', 'start_minute', 'end_hour', 'end_minute', 'temp_offset', 'power_offset', 'enabled']:
-                        if field not in program:
-                            _LOGGER.error("Missing field '%s' in program %d", field, i)
-                            return False
-                    
-                    data[offset] = program['start_hour']
-                    data[offset + 1] = program['start_minute']
-                    data[offset + 2] = program['end_hour']
-                    data[offset + 3] = program['end_minute']
-                    
-                    # Convert temperature offset to device format (20.5°C = 2050)
-                    temp_raw = int(program['temp_offset'] * 100)
-                    data[offset + 4:offset + 6] = temp_raw.to_bytes(2, byteorder='little', signed=True)
-                    
-                    # Power offset as signed int8
-                    data[offset + 6] = program['power_offset'].to_bytes(1, byteorder='little', signed=True)[0]
-                    data[offset + 7] = 1 if program['enabled'] else 0
-                else:
-                    # Empty program - all zeros (disabled)
-                    for j in range(8):
-                        data[offset + j] = 0
 
-            # Tell device which day we're writing to
-            await self.client.write_gatt_char(CALENDAR_CONTROL_UUID, bytes([day]), response=True)
+                # Validate program data
+                for field in ['start_hour', 'start_minute', 'end_hour', 'end_minute', 'temp_offset', 'power_offset', 'enabled']:
+                    if field not in program:
+                        _LOGGER.error("Missing field '%s' in program %d", field, i)
+                        return False
 
-            # Write using split protocol
-            if not await self._ble_write_split(CALENDAR_DAY_UUID, bytes(data), "calendar day"):
-                return False
+                data[offset] = program['start_hour']
+                data[offset + 1] = program['start_minute']
+                data[offset + 2] = program['end_hour']
+                data[offset + 3] = program['end_minute']
 
-            # Add small delay to let device process the request
-            await asyncio.sleep(0.2)
-            
-            # Save to flash (write 0 to control characteristic)
-            await self.client.write_gatt_char(CALENDAR_CONTROL_UUID, bytes([0]), response=True)
+                # Convert temperature offset to device format (20.5°C = 2050)
+                temp_raw = int(program['temp_offset'] * 100)
+                data[offset + 4:offset + 6] = temp_raw.to_bytes(2, byteorder='little', signed=True)
 
-            return True
-
-        except BleakError as e:
-            _LOGGER.error("BLE error writing calendar day: %s", e)
-            self.client = None
-            return False
+                # Power offset as signed int8
+                data[offset + 6] = program['power_offset'].to_bytes(1, byteorder='little', signed=True)[0]
+                data[offset + 7] = 1 if program['enabled'] else 0
         except Exception as e:
-            _LOGGER.error("Failed to write calendar day: %s", e)
+            _LOGGER.error("Invalid calendar program data: %s", e)
             return False
+
+        # Tell device which day we're writing to
+        if not await self._ble_write(CALENDAR_CONTROL_UUID, bytes([day]), "calendar control"):
+            return False
+
+        # Write using split protocol
+        if not await self._ble_write_split(CALENDAR_DAY_UUID, bytes(data), "calendar day"):
+            return False
+
+        # Add small delay to let device process the request
+        await asyncio.sleep(0.2)
+
+        # Save to flash (write 0 to control characteristic)
+        return await self._ble_write(CALENDAR_CONTROL_UUID, bytes([0]), "calendar control")
 
     async def read_force_control(self) -> Optional[dict]:
         """Read force control / external control configuration from device.
