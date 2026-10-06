@@ -202,7 +202,7 @@ class EnstoThermostatManager:
     async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
         """Write a single GATT characteristic with response=True.
 
-        Not suitable for split-packet characteristics; use write_split_characteristic() for those.
+        Not suitable for split-packet characteristics; use _ble_write_split() for those.
 
         Args:
             uuid:  UUID of the GATT characteristic to write.
@@ -326,6 +326,39 @@ class EnstoThermostatManager:
 
         # Remove padding bytes (zeros from the end)
         return bytes(combined).rstrip(b'\x00')
+
+    async def _ble_write_split(self, uuid: str, data: bytes, label: str = "") -> bool:
+        """Write a split-packet characteristic as two packets.
+
+        The payload is always split into two halves. The first packet has
+        header 0x80 and the last packet header 0x40. Packets are written with
+        _ble_write(), so connection checks and BLE error handling are the same
+        as for single writes.
+
+        Args:
+            uuid:  UUID of the GATT characteristic to write.
+            data:  Payload bytes to send.
+            label: Human-readable name for log messages, e.g. "calendar day".
+                   Falls back to the UUID string when omitted.
+
+        Returns:
+            True on success, False on any failure.
+        """
+        name = label or uuid
+        chunk_size = (len(data) + 1) // 2
+        chunks = [(0x80, data[:chunk_size]), (0x40, data[chunk_size:])]
+
+        for index, (header, chunk) in enumerate(chunks, start=1):
+            packet = bytearray([header]) + chunk
+            _LOGGER.debug("Writing %s packet %d/%d: %s", name, index, len(chunks), packet.hex())
+
+            if not await self._ble_write(uuid, packet, label):
+                return False
+
+            # Small delay between packets
+            await asyncio.sleep(0.1)
+
+        return True
 
     def parse_real_time_indication(self, data: bytes) -> dict:
         """
@@ -590,65 +623,6 @@ class EnstoThermostatManager:
         except UnicodeDecodeError as e:
             _LOGGER.error("Failed to read device name: %s", e)
             return None
-
-    async def write_split_characteristic(self, characteristic_uuid: str, data: bytes) -> bool:
-        """
-        Write BLE characteristic data that needs to be split into multiple packets.
-        """
-        if not self.client or not self.client.is_connected:
-            _LOGGER.error("Device not connected, cannot write %s.", characteristic_uuid)
-            return False
-        
-        try:
-            # Get MTU size and calculate max chunk size
-            mtu_size = self.client.mtu_size
-            _LOGGER.debug("Current MTU size: %s", mtu_size)
-            mtu_size - 3  # Reserve 3 bytes for ATT header
-            
-            # Calculate chunk size to ensure at least 2 packets
-            chunk_size = len(data) // 2 + (len(data) % 2)  # Force split into two chunks
-            
-            # Calculate how many chunks we need
-            total_chunks = 2  # Force minimum of 2 chunks
-            
-            for current_chunk in range(total_chunks):
-                # Calculate start and end positions for this chunk's data
-                start_pos = current_chunk * chunk_size
-                end_pos = min(start_pos + chunk_size, len(data))
-                chunk_data = data[start_pos:end_pos]
-                
-                # Create header byte:
-                if current_chunk == 0:
-                    # First packet: header is just sequence number (0)
-                    header = 0x80
-                else:
-                    # Last packet: 0x40 bit set but sequence number stays 0
-                    header = 0x40
-                
-                # Combine header and data
-                packet = bytearray([header]) + chunk_data
-                
-                # Debug log for each packet
-                _LOGGER.debug(
-                    f"Writing chunk {current_chunk + 1}/{total_chunks}:"
-                    f"\nHeader: 0x{header:02x}"
-                    f"\nChunk data (bytes): {chunk_data.hex()}"
-                    f"\nFull packet (bytes): {packet.hex()}"
-                )
-                
-                # Write the packet
-                await self.client.write_gatt_char(characteristic_uuid, packet, response=True)
-                
-                # Small delay between packets
-                await asyncio.sleep(0.1)
-            
-            return True
-            
-        except BleakError as e:
-            _LOGGER.error("Error writing characteristic: %s", e)
-            # Connection might be dead, clear it
-            self.client = None
-            raise
 
     async def read_date_and_time(self) -> dict:
         """Read date and time from device in UTC.
@@ -1646,7 +1620,8 @@ class EnstoThermostatManager:
             await self.client.write_gatt_char(CALENDAR_CONTROL_UUID, bytes([day]), response=True)
 
             # Write using split protocol
-            await self.write_split_characteristic(CALENDAR_DAY_UUID, bytes(data))
+            if not await self._ble_write_split(CALENDAR_DAY_UUID, bytes(data), "calendar day"):
+                return False
 
             # Add small delay to let device process the request
             await asyncio.sleep(0.2)
