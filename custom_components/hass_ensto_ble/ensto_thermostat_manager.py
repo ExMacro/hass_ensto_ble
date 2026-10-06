@@ -1268,70 +1268,70 @@ class EnstoThermostatManager:
             # Parse last 12 month power data
             # Offset calculation: daily data uses 19 bytes, so monthly starts at 19
             if len(data) >= 19:  # Need at least daily data section length before monthly
-               pos = 19  # Skip daily data section (3 bytes header + 7 * 2 bytes data = 19)
+                pos = 19  # Skip daily data section (3 bytes header + 7 * 2 bytes data = 19)
                
-               # Header: month(1) + year(1) = 2 bytes
-               # Data per month: delta_month(1) + ratio(1) = 2 bytes
-               if len(data) >= pos + 2:
-                   month = data[pos]
-                   year = data[pos + 1]
-                   pos += 2
+                # Header: month(1) + year(1) = 2 bytes
+                # Data per month: delta_month(1) + ratio(1) = 2 bytes
+                if len(data) >= pos + 2:
+                    month = data[pos]
+                    year = data[pos + 1]
+                    pos += 2
 
-                   # Process 12 months of power data
-                   for _ in range(12):
-                       if len(data) >= pos + 2:
-                           delta_months = data[pos]
-                           ratio_raw = data[pos + 1]
+                    # Process 12 months of power data
+                    for _ in range(12):
+                        if len(data) >= pos + 2:
+                            delta_months = data[pos]
+                            ratio_raw = data[pos + 1]
 
-                           # Calculate timestamp using relativedelta for accurate month subtraction
-                           timestamp = datetime(2000 + year, month, 1, tzinfo=dt_util.UTC) - relativedelta(months=delta_months)
+                            # Calculate timestamp using relativedelta for accurate month subtraction
+                            timestamp = datetime(2000 + year, month, 1, tzinfo=dt_util.UTC) - relativedelta(months=delta_months)
                            
-                           # Convert raw value to ratio, using None for unset values (0xff)
-                           ratio = None if ratio_raw == 0xff else ratio_raw
+                            # Convert raw value to ratio, using None for unset values (0xff)
+                            ratio = None if ratio_raw == 0xff else ratio_raw
 
-                           # Store the values in result
-                           result['monthly_power'].append({
-                               'time': timestamp.isoformat(),
-                               'ratio': ratio
-                           })
-                           pos += 2
+                            # Store the values in result
+                            result['monthly_power'].append({
+                                'time': timestamp.isoformat(),
+                                'ratio': ratio
+                            })
+                            pos += 2
 
             # Parse temperature history (24 hours * 7 days)
             if len(data) >= 47:  # 19 (daily) + 28 (monthly) bytes minimum before temperature data
-               pos = 47  # Skip daily (19) and monthly (28) data sections
+                pos = 47  # Skip daily (19) and monthly (28) data sections
                
-               # Header: hour(1) + day(1) + month(1) + year(1) = 4 bytes
-               if len(data) >= pos + 4:
-                   hour = data[pos]
-                   day = data[pos + 1]
-                   month = data[pos + 2]
-                   year = data[pos + 3]
-                   pos += 4
+                # Header: hour(1) + day(1) + month(1) + year(1) = 4 bytes
+                if len(data) >= pos + 4:
+                    hour = data[pos]
+                    day = data[pos + 1]
+                    month = data[pos + 2]
+                    year = data[pos + 3]
+                    pos += 4
 
-                   # Process 168 hours (24*7) of temperature data
-                   # Data per hour: delta_hour(1) + floor_temp(2) + room_temp(2) = 5 bytes
-                   for _ in range(168):
-                       if len(data) >= pos + 5:
-                           delta_hours = data[pos]
+                    # Process 168 hours (24*7) of temperature data
+                    # Data per hour: delta_hour(1) + floor_temp(2) + room_temp(2) = 5 bytes
+                    for _ in range(168):
+                        if len(data) >= pos + 5:
+                            delta_hours = data[pos]
                            
-                           # Get raw temperature values from bytes
-                           floor_temp_raw = int.from_bytes(data[pos+1:pos+3], byteorder='little', signed=True)
-                           room_temp_raw = int.from_bytes(data[pos+3:pos+5], byteorder='little', signed=True)
+                            # Get raw temperature values from bytes
+                            floor_temp_raw = int.from_bytes(data[pos+1:pos+3], byteorder='little', signed=True)
+                            room_temp_raw = int.from_bytes(data[pos+3:pos+5], byteorder='little', signed=True)
 
-                           # Calculate timestamp for this measurement
-                           timestamp = datetime(2000 + year, month, min(max(1, day), 28), hour, tzinfo=dt_util.UTC) - timedelta(hours=delta_hours)
+                            # Calculate timestamp for this measurement
+                            timestamp = datetime(2000 + year, month, min(max(1, day), 28), hour, tzinfo=dt_util.UTC) - timedelta(hours=delta_hours)
 
-                           # Convert raw values to temperatures, using None for unset values (0x7fff)
-                           floor_temp = None if floor_temp_raw == 0x7fff else floor_temp_raw / 10
-                           room_temp = None if room_temp_raw == 0x7fff else room_temp_raw / 10
+                            # Convert raw values to temperatures, using None for unset values (0x7fff)
+                            floor_temp = None if floor_temp_raw == 0x7fff else floor_temp_raw / 10
+                            room_temp = None if room_temp_raw == 0x7fff else room_temp_raw / 10
                            
-                           # Store the values in result
-                           result['temperature_history'].append({
-                               'time': timestamp.isoformat(),
-                               'floor_temp': floor_temp,
-                               'room_temp': room_temp,
-                           })
-                           pos += 5
+                            # Store the values in result
+                            result['temperature_history'].append({
+                                'time': timestamp.isoformat(),
+                                'floor_temp': floor_temp,
+                                'room_temp': room_temp,
+                            })
+                            pos += 5
 
             return result
 
