@@ -288,7 +288,7 @@ class EnstoThermostatManager:
         except Exception as e:
             raise Exception("Failed to write factory reset ID: %s", e)
 
-    async def read_split_characteristic(self, characteristic_uuid: str) -> bytes:
+    async def read_split_characteristic(self, characteristic_uuid: str) -> Optional[bytes]:
         """
         Read BLE characteristic data that uses split format.
         
@@ -296,12 +296,14 @@ class EnstoThermostatManager:
             characteristic_uuid: UUID of the characteristic to read
             
         Returns:
-            bytes: Combined data from all split packets
+            bytes: Combined data from all split packets, or None if not connected
             
         Raises:
             BleakError: If there's an error reading the characteristic
         """
-        await self.ensure_connection()
+        if not self.client or not self.client.is_connected:
+            _LOGGER.error("Device not connected, cannot read %s.", characteristic_uuid)
+            return None
         
         combined_data = bytearray()
         more_data = True
@@ -601,7 +603,9 @@ class EnstoThermostatManager:
         """
         Write BLE characteristic data that needs to be split into multiple packets.
         """
-        await self.ensure_connection()
+        if not self.client or not self.client.is_connected:
+            _LOGGER.error("Device not connected, cannot write %s.", characteristic_uuid)
+            return False
         
         try:
             # Get MTU size and calculate max chunk size
