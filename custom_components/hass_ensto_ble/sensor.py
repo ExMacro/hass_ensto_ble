@@ -23,7 +23,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry
 
-from .const import REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
+from .const import SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
 
 from . import EnstoConfigEntry
@@ -88,12 +88,10 @@ async def async_setup_entry(
     manager = entry.runtime_data
     
     # Check floor sensor availability
-    data = await manager._ble_read_split(REAL_TIME_INDICATION_UUID, "real-time indication")
+    parsed_data = await manager.get_real_time_coordinator().get_real_time_data()
     sensors = []
     
-    if data:
-        parsed_data = manager.parse_real_time_indication(data)
-        
+    if parsed_data is not None:
         # Add sensors
         sensors.extend([
             EnstoTemperatureSensor(manager, "room"),
@@ -418,9 +416,13 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
         
         # Calculate power if heating power is configured
         if self._heating_power and self._heating_power > 0:
-            data = await self._manager._ble_read_split(REAL_TIME_INDICATION_UUID, "real-time indication")
-            if data:
-                parsed_data = self._manager.parse_real_time_indication(data)
+            try:
+                parsed_data = await self._manager.get_real_time_coordinator().get_real_time_data()
+            except Exception as e:
+                _LOGGER.error("Error updating current power sensor: %s", e)
+                parsed_data = None
+
+            if parsed_data:
                 relay_active = parsed_data.get("relay_active", False)
                 self._attr_native_value = self._heating_power if relay_active else 0
             else:
