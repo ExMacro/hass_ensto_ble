@@ -49,6 +49,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Upper bound for packets in one split read; the largest payload (monitoring data) needs far fewer
+MAX_SPLIT_PACKETS = 100
+
 class EnstoThermostatManager:
     """Manager for Ensto BLE thermostats."""
 
@@ -170,7 +173,7 @@ class EnstoThermostatManager:
     async def _ble_read(self, uuid: str, label: str = "") -> Optional[bytes]:
         """Read a single GATT characteristic.
 
-        Not suitable for split-packet characteristics; use read_split_characteristic() for those.
+        Not suitable for split-packet characteristics; use _ble_read_split() for those.
 
         Args:
             uuid:  UUID of the GATT characteristic to read.
@@ -288,52 +291,41 @@ class EnstoThermostatManager:
         except Exception as e:
             raise Exception("Failed to write factory reset ID: %s", e)
 
-    async def read_split_characteristic(self, characteristic_uuid: str) -> Optional[bytes]:
-        """
-        Read BLE characteristic data that uses split format.
-        
+    async def _ble_read_split(self, uuid: str, label: str = "") -> Optional[bytes]:
+        """Read a split-packet characteristic and return the combined payload.
+
+        Each packet starts with a header byte; bit 0x40 marks the last packet.
+        Packets are read with _ble_read(), so connection checks and BLE error
+        handling are the same as for single reads.
+
         Args:
-            characteristic_uuid: UUID of the characteristic to read
-            
+            uuid:  UUID of the GATT characteristic to read.
+            label: Human-readable name for log messages, e.g. "monitoring data".
+                   Falls back to the UUID string when omitted.
+
         Returns:
-            bytes: Combined data from all split packets, or None if not connected
-            
-        Raises:
-            BleakError: If there's an error reading the characteristic
+            Combined payload without trailing zero padding, or None on any failure.
         """
-        if not self.client or not self.client.is_connected:
-            _LOGGER.error("Device not connected, cannot read %s.", characteristic_uuid)
+        combined = bytearray()
+
+        for _ in range(MAX_SPLIT_PACKETS):
+            packet = await self._ble_read(uuid, label)
+            if packet is None:
+                return None
+            if not packet:
+                break
+
+            combined.extend(packet[1:])
+
+            # Last packet has the 0x40 bit set in the header
+            if packet[0] & 0x40:
+                break
+        else:
+            _LOGGER.error("Too many packets reading %s", label or uuid)
             return None
-        
-        combined_data = bytearray()
-        more_data = True
-        
-        try:
-            while more_data:
-                # Read next packet
-                packet = await self.client.read_gatt_char(characteristic_uuid)
-                
-                if not packet or len(packet) < 1:
-                    break
-                    
-                header = packet[0]
-                data = packet[1:]
-                
-                # Add data portion to combined data
-                combined_data.extend(data)
-                
-                # Check if this was the last packet (0x40 bit set in header)
-                if header & 0x40:
-                    more_data = False
-                    
-            # Remove padding bytes (zeros from the end)
-            return bytes(combined_data).rstrip(b'\x00')
-            
-        except BleakError as e:
-            _LOGGER.error("Error reading characteristic: %s", e)
-            # Connection might be dead, clear it
-            self.client = None
-            raise
+
+        # Remove padding bytes (zeros from the end)
+        return bytes(combined).rstrip(b'\x00')
 
     def parse_real_time_indication(self, data: bytes) -> dict:
         """
@@ -1166,7 +1158,7 @@ class EnstoThermostatManager:
                     - 'ratio': Power consumption ratio (0-100%)
         """
         try:
-            data = await self.read_split_characteristic(REAL_TIME_INDICATION_POWER_CONSUMPTION_UUID)
+            data = await self._ble_read_split(REAL_TIME_INDICATION_POWER_CONSUMPTION_UUID, "power consumption")
             
             if not data:
                 _LOGGER.debug("No data received from device")
@@ -1207,11 +1199,6 @@ class EnstoThermostatManager:
                 'measurements': measurements
             }
 
-        except BleakError as e:
-            _LOGGER.error("BLE error reading power consumption: %s", e)
-            self.client = None
-            return None
-
         except Exception as e:
             _LOGGER.error("Error reading power consumption: %s", e)
             return None
@@ -1227,7 +1214,7 @@ class EnstoThermostatManager:
             None if read fails
         """
         try:
-            data = await self.read_split_characteristic(MONITORING_DATA_UUID)
+            data = await self._ble_read_split(MONITORING_DATA_UUID, "monitoring data")
             if not data:
                 _LOGGER.debug("No monitoring data received from device")
                 return None
@@ -1339,11 +1326,6 @@ class EnstoThermostatManager:
 
             return result
 
-        except BleakError as e:
-            _LOGGER.error("BLE error reading monitoring data: %s", e)
-            self.client = None
-            return None
-        
         except Exception as e:
             _LOGGER.error("Error reading monitoring data: %s", e)
             return None
@@ -1542,7 +1524,7 @@ class EnstoThermostatManager:
             await asyncio.sleep(0.2)
             
             # Read split data from calendar day characteristic
-            data = await self.read_split_characteristic(CALENDAR_DAY_UUID)
+            data = await self._ble_read_split(CALENDAR_DAY_UUID, "calendar day")
             
             if not data:
                 _LOGGER.error("No calendar day data received")

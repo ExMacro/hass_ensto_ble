@@ -88,7 +88,7 @@ async def async_setup_entry(
     manager = entry.runtime_data
     
     # Check floor sensor availability
-    data = await manager.read_split_characteristic(REAL_TIME_INDICATION_UUID)
+    data = await manager._ble_read_split(REAL_TIME_INDICATION_UUID, "real-time indication")
     sensors = []
     
     if data:
@@ -418,7 +418,7 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
         
         # Calculate power if heating power is configured
         if self._heating_power and self._heating_power > 0:
-            data = await self._manager.read_split_characteristic(REAL_TIME_INDICATION_UUID)
+            data = await self._manager._ble_read_split(REAL_TIME_INDICATION_UUID, "real-time indication")
             if data:
                 parsed_data = self._manager.parse_real_time_indication(data)
                 relay_active = parsed_data.get("relay_active", False)

@@ -29,7 +29,7 @@ class EnstoRealTimeCoordinator:
                         device_name, self._manager.mac_address)
             # The coordinator owns reconnecting; BLE helpers only check the connection
             await self._manager.ensure_connection()
-            raw_data = await self._manager.read_split_characteristic(REAL_TIME_INDICATION_UUID)
+            raw_data = await self._manager._ble_read_split(REAL_TIME_INDICATION_UUID, "real-time indication")
             if raw_data:
                 self._last_data = self._manager.parse_real_time_indication(raw_data)
                 self._last_update = now
