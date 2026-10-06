@@ -1142,16 +1142,20 @@ class EnstoThermostatManager:
                 _LOGGER.error("Data too short, expected at least 4 bytes for header")
                 return None
 
+            # Restore trailing zeros removed by the split read
+            data = data.ljust(4 + 24 * 2, b'\x00')
+
             # Parse header timestamp
             hour = data[0]  # uint8 hour
             day = data[1]   # uint8 day
             month = data[2] # uint8 month
             year = data[3]  # uint8 year (0-255)
+            header_time = datetime(2000 + year, month, day, hour, tzinfo=dt_util.UTC)
 
             measurements = []
 
             # Process measurement pairs (delta hour and ratio)
-            for i in range(24):  # 25 hours of data
+            for i in range(24):  # 24 hours of data
                 offset = 4 + i * 2  # Start after header, 2 bytes per measurement
                 delta_hours = data[offset]
                 ratio = data[offset + 1]
@@ -1160,16 +1164,13 @@ class EnstoThermostatManager:
                 if ratio == 0xff:
                     continue
                     
-                # Calculate timestamp for this measurement
-                timestamp = datetime(2000 + year, month, day, hour, tzinfo=dt_util.UTC) - timedelta(hours=delta_hours)
-                
                 measurements.append({
-                    'timestamp': timestamp,
+                    'timestamp': header_time - timedelta(hours=delta_hours),
                     'ratio': ratio
                 })
             
             return {
-                'timestamp': timestamp,
+                'timestamp': header_time,
                 'measurements': measurements
             }
 
