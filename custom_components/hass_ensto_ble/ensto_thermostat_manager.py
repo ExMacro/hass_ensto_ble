@@ -281,7 +281,7 @@ class EnstoThermostatManager:
             factory_reset_id = int.from_bytes(data[:4], byteorder="little")
             return factory_reset_id
         except Exception as e:
-            raise Exception("Failed to read factory reset ID: %s", e)
+            raise Exception(f"Failed to read factory reset ID: {e}") from e
 
     async def write_factory_reset_id(self, factory_reset_id: int) -> None:
         """Write the Factory Reset ID to the BLE device."""
@@ -289,7 +289,7 @@ class EnstoThermostatManager:
             id_bytes = factory_reset_id.to_bytes(4, byteorder="little")
             await self.client.write_gatt_char(FACTORY_RESET_ID_UUID, id_bytes)
         except Exception as e:
-            raise Exception("Failed to write factory reset ID: %s", e)
+            raise Exception(f"Failed to write factory reset ID: {e}") from e
 
     async def _ble_read_split(self, uuid: str, label: str = "") -> Optional[bytes]:
         """Read a split-packet characteristic and return the combined payload.
