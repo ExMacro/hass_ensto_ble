@@ -526,7 +526,7 @@ class EnstoThermostatManager:
 
         # Convert temperature to raw value (multiply by 100)
         # e.g., 21.5 degrees becomes 2150
-        offset_raw = int(offset_degrees * 100)
+        offset_raw = int(round(offset_degrees * 100))
 
         # Create data packet (8 bytes)
         data = bytearray(8)
@@ -866,8 +866,8 @@ class EnstoThermostatManager:
             return False
 
         data = bytearray(4)
-        low_raw = int(low_value * 100)
-        high_raw = int(high_value * 100)
+        low_raw = int(round(low_value * 100))
+        high_raw = int(round(high_value * 100))
         data[0:2] = low_raw.to_bytes(2, byteorder='little')
         data[2:4] = high_raw.to_bytes(2, byteorder='little')
 
@@ -1107,7 +1107,7 @@ class EnstoThermostatManager:
         data[1] = 0  # Unused byte
 
         # Convert price to integer scaled by 100
-        price_raw = int(price * 100)
+        price_raw = int(round(price * 100))
         data[2:4] = price_raw.to_bytes(2, byteorder='little')
 
         # Write to device
@@ -1428,7 +1428,7 @@ class EnstoThermostatManager:
         data[9] = local_to.minute
 
         # Temperature offset
-        temp_raw = int(offset_temperature * 100)
+        temp_raw = int(round(offset_temperature * 100))
         data[10:12] = temp_raw.to_bytes(2, byteorder='little', signed=True)
 
         # Percentage and enabled
@@ -1570,7 +1570,7 @@ class EnstoThermostatManager:
                 data[offset + 3] = program['end_minute']
 
                 # Convert temperature offset to device format (20.5°C = 2050)
-                temp_raw = int(program['temp_offset'] * 100)
+                temp_raw = int(round(program['temp_offset'] * 100))
                 data[offset + 4:offset + 6] = temp_raw.to_bytes(2, byteorder='little', signed=True)
 
                 # Power offset as signed int8
