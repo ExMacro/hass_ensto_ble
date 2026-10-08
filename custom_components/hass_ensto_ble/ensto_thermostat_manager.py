@@ -1,6 +1,7 @@
 """Support for Ensto BLE devices."""
 import logging
 import asyncio
+import time
 from typing import Optional
 from bleak import BleakClient
 from bleak.exc import BleakError
@@ -52,6 +53,10 @@ _LOGGER = logging.getLogger(__name__)
 # Upper bound for packets in one split read; the largest payload (monitoring data) needs far fewer
 MAX_SPLIT_PACKETS = 100
 
+# Valid real-time temperature ranges (°C) from the protocol specification
+ROOM_TEMP_RANGE = (-5.0, 35.0)
+FLOOR_TEMP_RANGE = (-5.0, 50.0)
+
 class EnstoThermostatManager:
     """Manager for Ensto BLE thermostats."""
 
@@ -66,6 +71,7 @@ class EnstoThermostatManager:
         self.model_number = None
         self.device_name = None
         self.real_time_coordinator = None
+        self.connected_at: Optional[float] = None
 
     def get_real_time_coordinator(self):
         if not self.real_time_coordinator:
@@ -155,6 +161,7 @@ class EnstoThermostatManager:
                 self.device_name = await self.read_device_name()
                 
                 _LOGGER.info("Successfully verified Factory Reset ID and read model number")
+                self.connected_at = time.monotonic()
 
             except Exception as e:
                 _LOGGER.error("Failed to connect: %s", str(e))
@@ -394,6 +401,14 @@ class EnstoThermostatManager:
             
             # Floor temperature (int16, scaled)
             floor_temp = int.from_bytes(data[5:7], byteorder='little', signed=True) / 10
+
+            # The device can report invalid values (e.g. -277 °C) right after connecting
+            if not ROOM_TEMP_RANGE[0] <= room_temp <= ROOM_TEMP_RANGE[1]:
+                _LOGGER.debug("Ignoring out-of-range room temperature: %.1f", room_temp)
+                room_temp = None
+            if not FLOOR_TEMP_RANGE[0] <= floor_temp <= FLOOR_TEMP_RANGE[1]:
+                _LOGGER.debug("Ignoring out-of-range floor temperature: %.1f", floor_temp)
+                floor_temp = None
             
             # Active relay state
             relay_active = bool(data[7])
