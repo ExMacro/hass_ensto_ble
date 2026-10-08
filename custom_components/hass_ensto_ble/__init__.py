@@ -82,14 +82,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         title = f"{manager.model_number or 'Unknown Model'} {manager.device_name or entry.data['mac_address']}"
         hass.config_entries.async_update_entry(entry, title=title)
 
-        # Initialize device currency from config flow
+        # Initialize device currency from config flow, keeping the price stored on the device
         try:
             config_currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
-            success = await manager.write_energy_unit(config_currency, 0.0)
-            
-            if not success:
-                _LOGGER.warning("Failed to set device currency")
-                
+            current = await manager.read_energy_unit()
+
+            if current is None:
+                _LOGGER.warning("Could not read energy unit, device currency not initialized")
+            elif current['currency_code'] != config_currency:
+                success = await manager.write_energy_unit(config_currency, current['price'])
+                if not success:
+                    _LOGGER.warning("Failed to set device currency")
+
         except Exception as e:
             _LOGGER.warning("Failed to initialize device currency: %s", e)
 
