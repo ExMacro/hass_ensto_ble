@@ -169,8 +169,8 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
 
         await self._manager.write_daylight_saving(
             enabled=True,
-            winter_to_summer=60,  # Standard 1h DST change
-            summer_to_winter=60,  # Standard 1h DST change
+            winter_to_summer=0,  # Ensto app writes 0, device does not store it
+            summer_to_winter=0,
             timezone_offset=tz_offset
         )
         self._is_on = True
@@ -180,20 +180,19 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         """Turn daylight saving off."""
         
-        # DST OFF: Send current timezone (with DST already included)
+        # DST OFF: Send base timezone (standard time) like the Ensto app does.
+        # The device stores the offset as int8, so the summer offset (180) would not fit.
         ha_tz = dt_util.DEFAULT_TIME_ZONE
-        utc_now = dt_util.utcnow()
-        
-        # Convert current UTC time to local timezone to get current offset
-        local_now = utc_now.astimezone(ha_tz)
-        tz_offset = int(local_now.utcoffset().total_seconds() / 60)
-        
-        _LOGGER.debug("Action [Daylight Saving Disable] for [%s]: current timezone offset %d minutes", self._manager.mac_address, tz_offset)
+        january_utc = datetime(2025, 1, 15, 12, 0, 0, tzinfo=dt_util.UTC)
+        january_local = january_utc.astimezone(ha_tz)
+        tz_offset = int(january_local.utcoffset().total_seconds() / 60)
+
+        _LOGGER.debug("Action [Daylight Saving Disable] for [%s]: base timezone offset %d minutes", self._manager.mac_address, tz_offset)
 
         await self._manager.write_daylight_saving(
             enabled=False,
-            winter_to_summer=60,  # Not used when DST disabled but keep consistent
-            summer_to_winter=60,  # Not used when DST disabled but keep consistent
+            winter_to_summer=0,  # Ensto app writes 0, device does not store it
+            summer_to_winter=0,
             timezone_offset=tz_offset
         )
         self._is_on = False

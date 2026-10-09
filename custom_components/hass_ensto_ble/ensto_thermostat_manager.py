@@ -799,14 +799,14 @@ class EnstoThermostatManager:
         
         Args:
             enabled: Enable/disable daylight saving
-            winter_to_summer: Offset in minutes for winter to summer transition (default 60 = 1h)
-            summer_to_winter: Offset in minutes for summer to winter transition (default 60 = 1h)
-            timezone_offset: Base timezone offset in minutes (default 120 = UTC+2 for Finland)
+            winter_to_summer: Winter to summer transition offset (Ensto app writes 0, device does not store it)
+            summer_to_winter: Summer to winter transition offset (Ensto app writes 0, device does not store it)
+            timezone_offset: Base timezone offset in minutes (standard time, 120 = UTC+2 for Finland)
             
         Note: 
             For Finland (EET/EEST):
             - timezone_offset should be 120 (UTC+2)
-            - DST changes are 1h (60 minutes)
+            - Device stores timezone_offset as int8, so it must stay within -128...127
             - Device adds the DST offset automatically when enabled
         """
         data = bytearray(8)

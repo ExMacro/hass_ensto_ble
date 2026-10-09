@@ -136,23 +136,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                 current_dst_settings = await manager.read_daylight_saving()
                 dst_enabled = current_dst_settings.get('enabled', False) if current_dst_settings else False
 
-                # Calculate timezone offset based on DST setting (same logic as DST switch)
+                # Always use base timezone offset (standard time), same as DST switch and Ensto app
                 ha_tz = dt_util.DEFAULT_TIME_ZONE
-                
-                if dst_enabled:
-                    # DST enabled: use base timezone offset (standard time)
-                    january_utc = utc_now.replace(month=1, day=15)
-                    january_local = january_utc.astimezone(ha_tz)
-                    tz_offset = int(january_local.utcoffset().total_seconds() / 60)
+                january_utc = utc_now.replace(month=1, day=15)
+                january_local = january_utc.astimezone(ha_tz)
+                tz_offset = int(january_local.utcoffset().total_seconds() / 60)
 
-                    _LOGGER.debug("Action [Set Device Time] for [%s]: DST enabled, using base offset %d min", 
-                                manager.mac_address, tz_offset)
-                else:
-                    # DST disabled: use current offset (includes DST if active)
-                    local_now = utc_now.astimezone(ha_tz)
-                    tz_offset = int(local_now.utcoffset().total_seconds() / 60)
-                    _LOGGER.debug("Action [Set Device Time] for [%s]: DST disabled, using current offset %d min", 
-                                manager.mac_address, tz_offset)
+                _LOGGER.debug("Action [Set Device Time] for [%s]: DST enabled=%s, using base offset %d min",
+                            manager.mac_address, dst_enabled, tz_offset)
 
                 # Write UTC time to the device
                 if await manager.write_date_and_time(
@@ -166,8 +157,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                     # Update timezone and DST settings while preserving DST state
                     await manager.write_daylight_saving(
                         enabled=dst_enabled,
-                        winter_to_summer=60,
-                        summer_to_winter=60,
+                        winter_to_summer=0,  # Ensto app writes 0, device does not store it
+                        summer_to_winter=0,
                         timezone_offset=tz_offset
                     )
                     
