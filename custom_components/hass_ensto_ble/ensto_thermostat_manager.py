@@ -1158,7 +1158,7 @@ class EnstoThermostatManager:
                 return None
 
             # Restore trailing zeros removed by the split read
-            data = data.ljust(4 + 24 * 2, b'\x00')
+            data = data.ljust(4 + 25 * 2, b'\x00')
 
             # Parse header timestamp
             hour = data[0]  # uint8 hour
@@ -1170,7 +1170,7 @@ class EnstoThermostatManager:
             measurements = []
 
             # Process measurement pairs (delta hour and ratio)
-            for i in range(24):  # 24 hours of data
+            for i in range(25):  # Current hour + 24 previous hours
                 offset = 4 + i * 2  # Start after header, 2 bytes per measurement
                 delta_hours = data[offset]
                 ratio = data[offset + 1]
