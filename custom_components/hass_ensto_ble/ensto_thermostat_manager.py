@@ -1165,7 +1165,7 @@ class EnstoThermostatManager:
             day = data[1]   # uint8 day
             month = data[2] # uint8 month
             year = data[3]  # uint8 year (0-255)
-            header_time = datetime(2000 + year, month, day, hour, tzinfo=dt_util.UTC)
+            header_time = datetime(2000 + year, month, day, hour)
 
             measurements = []
 
@@ -1180,12 +1180,12 @@ class EnstoThermostatManager:
                     continue
                     
                 measurements.append({
-                    'timestamp': header_time - timedelta(hours=delta_hours),
+                    'timestamp': dt_util.as_local(header_time - timedelta(hours=delta_hours)),
                     'ratio': ratio
                 })
             
             return {
-                'timestamp': header_time,
+                'timestamp': dt_util.as_local(header_time),
                 'measurements': measurements
             }
 
@@ -1234,7 +1234,7 @@ class EnstoThermostatManager:
                         delta_days = data[pos]
                         ratio_raw = data[pos + 1]
                         
-                        timestamp = datetime(2000 + year, month, day, tzinfo=dt_util.UTC) - timedelta(days=delta_days)
+                        timestamp = dt_util.as_local(datetime(2000 + year, month, day) - timedelta(days=delta_days))
                         
                         # Convert raw value to ratio, using None for unset values (0xff)
                         ratio = None if ratio_raw == 0xff else ratio_raw
@@ -1265,7 +1265,7 @@ class EnstoThermostatManager:
                             ratio_raw = data[pos + 1]
 
                             # Calculate timestamp using relativedelta for accurate month subtraction
-                            timestamp = datetime(2000 + year, month, 1, tzinfo=dt_util.UTC) - relativedelta(months=delta_months)
+                            timestamp = dt_util.as_local(datetime(2000 + year, month, 1) - relativedelta(months=delta_months))
                            
                             # Convert raw value to ratio, using None for unset values (0xff)
                             ratio = None if ratio_raw == 0xff else ratio_raw
@@ -1300,7 +1300,7 @@ class EnstoThermostatManager:
                             room_temp_raw = int.from_bytes(data[pos+3:pos+5], byteorder='little', signed=True)
 
                             # Calculate timestamp for this measurement
-                            timestamp = datetime(2000 + year, month, min(max(1, day), 28), hour, tzinfo=dt_util.UTC) - timedelta(hours=delta_hours)
+                            timestamp = dt_util.as_local(datetime(2000 + year, month, min(max(1, day), 28), hour) - timedelta(hours=delta_hours))
 
                             # Convert raw values to temperatures, using None for unset values (0x7fff)
                             floor_temp = None if floor_temp_raw == 0x7fff else floor_temp_raw / 10
