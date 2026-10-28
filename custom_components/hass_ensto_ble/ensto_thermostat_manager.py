@@ -57,6 +57,9 @@ MAX_SPLIT_PACKETS = 100
 ROOM_TEMP_RANGE = (-5.0, 35.0)
 FLOOR_TEMP_RANGE = (-5.0, 50.0)
 
+# Seconds to wait after a failed clock synchronization before trying again
+CLOCK_SYNC_RETRY_DELAY = 600
+
 class EnstoThermostatManager:
     """Manager for Ensto BLE thermostats."""
 
@@ -72,6 +75,8 @@ class EnstoThermostatManager:
         self.device_name = None
         self.real_time_coordinator = None
         self.connected_at: Optional[float] = None
+        # Monotonic time of the last failed clock sync, None after a success
+        self._clock_sync_failed_at: Optional[float] = None
 
     def get_real_time_coordinator(self):
         if not self.real_time_coordinator:
@@ -748,6 +753,55 @@ class EnstoThermostatManager:
 
         # Write to device
         return await self._ble_write(DATE_AND_TIME_UUID, data, "UTC time to device")
+
+    async def sync_date_and_time(self, drift_seconds: float) -> bool:
+        """Set device clock to Home Assistant UTC time.
+
+        Only the clock is written, DST config is left unchanged. After a failed
+        write, no new attempt is made for CLOCK_SYNC_RETRY_DELAY seconds.
+        Successful syncs are not rate limited.
+
+        Args:
+            drift_seconds: Difference between device and HA time, for logging
+
+        Returns:
+            bool: True if the clock was written, False if the write failed or was skipped
+        """
+        failed_at = self._clock_sync_failed_at
+        if failed_at is not None and time.monotonic() - failed_at < CLOCK_SYNC_RETRY_DELAY:
+            return False
+
+        device_name = self.device_name or "Unknown Device"
+        now = dt_util.utcnow()
+        success = await self.write_date_and_time(
+            now.year, now.month, now.day, now.hour, now.minute, now.second
+        )
+
+        if success:
+            if failed_at is not None:
+                _LOGGER.info(
+                    "Clock synchronization on %s (%s) recovered",
+                    device_name, self.mac_address
+                )
+                self._clock_sync_failed_at = None
+            _LOGGER.debug(
+                "Clock on %s (%s) drifted %d s, synchronized",
+                device_name, self.mac_address, drift_seconds
+            )
+            return True
+
+        if failed_at is None:
+            _LOGGER.warning(
+                "Failed to synchronize clock on %s (%s), retrying in %d min",
+                device_name, self.mac_address, CLOCK_SYNC_RETRY_DELAY // 60
+            )
+        else:
+            _LOGGER.debug(
+                "Clock synchronization on %s (%s) still failing",
+                device_name, self.mac_address
+            )
+        self._clock_sync_failed_at = time.monotonic()
+        return False
 
     async def read_daylight_saving(self) -> dict:
         """Read daylight saving configuration from device.
