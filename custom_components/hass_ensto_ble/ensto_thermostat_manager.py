@@ -762,7 +762,7 @@ class EnstoThermostatManager:
         Successful syncs are not rate limited.
 
         Args:
-            drift_seconds: Difference between device and HA time, for logging
+            drift_seconds: Absolute difference between device and HA time, for logging
 
         Returns:
             bool: True if the clock was written, False if the write failed or was skipped
@@ -784,9 +784,18 @@ class EnstoThermostatManager:
                     device_name, self.mac_address
                 )
                 self._clock_sync_failed_at = None
+            # Format drift as e.g. "3953 d 19 h 1 min", leaving out leading zero units
+            days, rem = divmod(int(drift_seconds) // 60, 24 * 60)
+            hours, minutes = divmod(rem, 60)
+            if days:
+                drift = f"{days} d {hours} h {minutes} min"
+            elif hours:
+                drift = f"{hours} h {minutes} min"
+            else:
+                drift = f"{minutes} min"
             _LOGGER.debug(
-                "Clock on %s (%s) drifted %d s, synchronized",
-                device_name, self.mac_address, drift_seconds
+                "Clock on %s (%s) drifted %s, synchronized",
+                device_name, self.mac_address, drift
             )
             return True
 

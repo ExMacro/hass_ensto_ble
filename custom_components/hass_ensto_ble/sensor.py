@@ -230,8 +230,6 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
         # Create a unique ID for the sensor using MAC address
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_datetime"
         self._attr_native_value = None
-        # Track if alert is currently shown
-        self._alert_shown = False
 
     async def async_added_to_hass(self) -> None:
             """Subscribe to updates."""
@@ -263,7 +261,7 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
         
         The device internally operates in UTC time and handles DST/timezone conversions
         based on its own settings. We read UTC time from device and compare it with
-        HA's UTC time to detect mismatches.
+        HA's UTC time, and synchronize the device clock if they differ.
         """
         try:
             # Get current date and time from the device (in UTC)
@@ -285,32 +283,11 @@ class EnstoDateTimeSensor(EnstoBaseSensor):
                 ha_utc = dt_util.utcnow()
                 time_diff = abs(ha_utc - device_utc)
                 
-                # Show notification if time difference is more than 1 minute
+                # Synchronize device clock if time difference is more than 1 minute
                 if time_diff > timedelta(minutes=1):
-                    if not self._alert_shown:
-                        # Get device name for notification
-                        device_name = self._manager.device_name or "Unknown Device"
-                        
-                        await self.hass.services.async_call(
-                            "persistent_notification",
-                            "create",
-                            {
-                                "title": f"Time Mismatch Detected - {device_name}",
-                                "message": (
-                                    f"Device {device_name} ({self._manager.mac_address}) time "
-                                    f"(UTC: {device_utc.strftime('%-d.%-m.%Y %-H:%M:%S')}) "
-                                    f"differs from Home Assistant time "
-                                    f"(UTC: {ha_utc.strftime('%-d.%-m.%Y %-H:%M:%S')}). "
-                                    "Use the Set device time service in Developer tools to synchronize."
-                                ),
-                                "notification_id": f"ensto_time_{self._manager.mac_address}"
-                            }
-                        )
-                        self._alert_shown = True
-                else:
-                    # Reset alert flag if times are in sync
-                    self._alert_shown = False
-                        
+                    if await self._manager.sync_date_and_time(time_diff.total_seconds()):
+                        self._attr_native_value = dt_util.as_local(ha_utc).strftime("%-d.%-m.%Y %-H:%M")
+
         except Exception as e:
             _LOGGER.error("Error updating datetime: %s", e)
 
