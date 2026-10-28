@@ -1,11 +1,3 @@
-set_device_time:
-  name: Set device time
-  description: Set Ensto device time to match Home Assistant time
-  target:
-    entity:
-      integration: hass_ensto_ble
-      domain: sensor
-
 get_calendar_day:
   name: Get calendar day
   description: Read calendar programs for a specific day

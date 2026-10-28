@@ -7,11 +7,8 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError, ServiceValidationError
-from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -30,7 +27,6 @@ type EnstoConfigEntry = ConfigEntry[EnstoThermostatManager]
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT, Platform.NUMBER, Platform.DATETIME]
 
 # Set services
-SERVICE_SET_TIME = "set_device_time"
 SERVICE_GET_CALENDAR_DAY = "get_calendar_day"
 SERVICE_SET_CALENDAR_DAY = "set_calendar_day"
 
@@ -96,79 +92,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
 
         except Exception as e:
             _LOGGER.warning("Failed to initialize device currency: %s", e)
-
-        async def set_device_time(call: ServiceCall) -> None:
-            """Set device time to match Home Assistant time."""
-
-            # Get current UTC time from Home Assistant
-            utc_now = dt_util.utcnow()
-            
-            # Extract the target entity from service call data
-            target_entity = call.data.get("entity_id")
-                
-            if not target_entity:
-                raise ServiceValidationError("No target entity specified")
-
-            # Handle both single entity and multiple entities if given by user
-            if isinstance(target_entity, list):
-                entity_ids = target_entity
-            else:
-                entity_ids = [target_entity]
-
-            # Debug timezone info once (applies to all devices)
-            _LOGGER.debug("Action [Set Device Time]: setting UTC time %s", utc_now.strftime('%Y-%m-%d %H:%M:%S'))
-
-            # Process each entity
-            for entity_id in entity_ids:
-                # Get the entity registry entry for the target
-                entity_registry = er.async_get(hass)
-                entity_entry = entity_registry.async_get(entity_id)
-                if not entity_entry:
-                    raise ServiceValidationError(f"Entity {entity_id} not found")
-
-                # Get the correct thermostat manager instance for this device
-                config_entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
-                if config_entry is None or config_entry.state is not ConfigEntryState.LOADED:
-                    raise ServiceValidationError(f"Device of {entity_id} is disabled or not available")
-                manager = config_entry.runtime_data
-                
-                # Read current DST settings from the device
-                current_dst_settings = await manager.read_daylight_saving()
-                dst_enabled = current_dst_settings.get('enabled', False) if current_dst_settings else False
-
-                # Always use base timezone offset (standard time), same as DST switch and Ensto app
-                ha_tz = dt_util.DEFAULT_TIME_ZONE
-                january_utc = utc_now.replace(month=1, day=15)
-                january_local = january_utc.astimezone(ha_tz)
-                tz_offset = int(january_local.utcoffset().total_seconds() / 60)
-
-                _LOGGER.debug("Action [Set Device Time] for [%s]: DST enabled=%s, using base offset %d min",
-                            manager.mac_address, dst_enabled, tz_offset)
-
-                # Write UTC time to the device
-                if await manager.write_date_and_time(
-                    utc_now.year,
-                    utc_now.month,
-                    utc_now.day,
-                    utc_now.hour,
-                    utc_now.minute,
-                    utc_now.second
-                ):
-                    # Update timezone and DST settings while preserving DST state
-                    await manager.write_daylight_saving(
-                        enabled=dst_enabled,
-                        winter_to_summer=0,  # Ensto app writes 0, device does not store it
-                        summer_to_winter=0,
-                        timezone_offset=tz_offset
-                    )
-                    
-                    _LOGGER.debug("Action [Set Device Time] for [%s]: successfully set time with DST=%s, offset=%d min",
-                                manager.mac_address, dst_enabled, tz_offset)
-
-                    # Notify only datetime sensor to update
-                    async_dispatcher_send(hass, f"ensto_datetime_update_{manager.mac_address}")
-                else:
-                    raise HomeAssistantError(f"Could not set time on {manager.device_name or manager.mac_address}")
 
         async def get_calendar_day(call: ServiceCall) -> None:
                     """Get calendar day programs service."""
@@ -248,13 +171,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                             raise HomeAssistantError(f"Could not write calendar day to {manager.device_name or manager.mac_address}")
 
         # Only register services if they don't already exist
-        if not hass.services.has_service(DOMAIN, SERVICE_SET_TIME):
-            hass.services.async_register(
-                DOMAIN,
-                SERVICE_SET_TIME,
-                set_device_time,
-            )
-
         if not hass.services.has_service(DOMAIN, SERVICE_GET_CALENDAR_DAY):
             hass.services.async_register(
                 DOMAIN,
@@ -294,7 +210,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bo
         if e.entry_id != entry.entry_id
     ]
     if not remaining_entries:
-        hass.services.async_remove(DOMAIN, SERVICE_SET_TIME)
         hass.services.async_remove(DOMAIN, SERVICE_GET_CALENDAR_DAY)
         hass.services.async_remove(DOMAIN, SERVICE_SET_CALENDAR_DAY)
 

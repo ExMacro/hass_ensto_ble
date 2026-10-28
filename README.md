@@ -97,14 +97,6 @@ The device automatically converts between UTC and local time based on this setti
 
 The integration automatically synchronizes the thermostat's internal clock with Home Assistant when the device time differs by more than one minute. If synchronization fails, a warning is logged and the next attempt is made after 10 minutes.
 
-To synchronize manually:
-
-1. Navigate to **Developer Tools → Actions**
-2. Select service `hass_ensto_ble.set_device_time`
-3. Select your thermostat's DateTime entity as target
-4. Click **Perform action**
-5. Verify the **Date and time** sensor shows the correct local time
-
 > **Note:** Time is handled internally in UTC to ensure consistent operation across time zones.
 
 ### Floor Sensor Type
