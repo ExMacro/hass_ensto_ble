@@ -37,7 +37,6 @@ class EnstoVacationDateTimeEntity(EnstoBaseEntity, DateTimeEntity):
     # Class attributes that apply to all instances
     _attr_has_entity_name = True  # Use the device name as a prefix
     _attr_entity_category = EntityCategory.CONFIG  # Show in configuration section in UI and make editable
-    _attr_should_poll = False  # Disable polling - rely on signals instead
 
     def __init__(self, manager, date_type):
         """Initialize the DateTime entity."""
