@@ -1352,10 +1352,19 @@ class EnstoThermostatManager:
                     year = data[pos + 3]
                     pos += 4
 
+                    try:
+                        header_time = datetime(2000 + year, month, day, hour)
+                    except ValueError:
+                        _LOGGER.warning(
+                            "Invalid temperature history header: %02d.%02d.%d %02d:00",
+                            day, month, 2000 + year, hour
+                        )
+                        header_time = None
+
                     # Process 168 hours (24*7) of temperature data
                     # Data per hour: delta_hour(1) + floor_temp(2) + room_temp(2) = 5 bytes
                     for _ in range(168):
-                        if len(data) >= pos + 5:
+                        if header_time is not None and len(data) >= pos + 5:
                             delta_hours = data[pos]
                            
                             # Get raw temperature values from bytes
@@ -1363,7 +1372,7 @@ class EnstoThermostatManager:
                             room_temp_raw = int.from_bytes(data[pos+3:pos+5], byteorder='little', signed=True)
 
                             # Calculate timestamp for this measurement
-                            timestamp = dt_util.as_local(datetime(2000 + year, month, min(max(1, day), 28), hour) - timedelta(hours=delta_hours))
+                            timestamp = dt_util.as_local(header_time - timedelta(hours=delta_hours))
 
                             # Convert raw values to temperatures, using None for unset values (0x7fff)
                             floor_temp = None if floor_temp_raw == 0x7fff else floor_temp_raw / 10
