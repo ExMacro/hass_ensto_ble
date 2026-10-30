@@ -15,9 +15,12 @@ class EnstoRealTimeCoordinator:
         self._last_data = None
         self._last_update = None
         self._update_lock = asyncio.Lock()
+        # Monotonic time of the last failed connect, None after a success
+        self._connect_failed_at = None
         
     async def get_real_time_data(self, max_age_seconds=25):
         """Returns cached data if less than 25 seconds old, otherwise reads new."""
+        called_at = time.monotonic()
         async with self._update_lock:
             now = time.time()
             device_name = self._manager.device_name or 'Unknown Device'
@@ -27,12 +30,25 @@ class EnstoRealTimeCoordinator:
                 LOGGER.debug("Loaded from cache for %s (%s) - age: %.1fs",
                            device_name, self._manager.mac_address, now - self._last_update)
                 return self._last_data
-                        
+
+            # Callers that waited while a connect attempt failed share its result;
+            # otherwise every sensor would retry in turn
+            failed_at = self._connect_failed_at
+            if failed_at is not None and failed_at >= called_at:
+                LOGGER.debug("Skipping reconnect for %s (%s), connect failed while waiting",
+                             device_name, self._manager.mac_address)
+                return None
+
             # Read new data
             LOGGER.debug("Reading new data for %s (%s)",
                         device_name, self._manager.mac_address)
             # The coordinator owns reconnecting; BLE helpers only check the connection
-            await self._manager.ensure_connection()
+            try:
+                await self._manager.ensure_connection()
+            except Exception:
+                self._connect_failed_at = time.monotonic()
+                raise
+            self._connect_failed_at = None
 
             connected_at = self._manager.connected_at
             if connected_at is not None:
