@@ -75,6 +75,9 @@ class EnstoThermostatManager:
         self.device_name = None
         self.real_time_coordinator = None
         self.connected_at: Optional[float] = None
+        # True once the Factory Reset ID is written; reads and writes before that
+        # return dummy values or drop the connection (spec 1.1.4, 1.1.5)
+        self._authenticated = False
         # Monotonic time of the last failed clock sync, None after a success
         self._clock_sync_failed_at: Optional[float] = None
 
@@ -128,6 +131,9 @@ class EnstoThermostatManager:
                 if not device:
                     raise Exception(f"Device {self.mac_address} not found")
 
+                # Block _ble_read/_ble_write until the new connection is authenticated
+                self._authenticated = False
+
                 # Use bleak-retry-connector
                 _LOGGER.debug("Device [%s]: establishing connection", self.mac_address)
                 self.client = await establish_connection(BleakClientWithServiceCache, device, self.mac_address)
@@ -160,7 +166,8 @@ class EnstoThermostatManager:
                 
                 # Write Factory Reset ID to device
                 await self.write_factory_reset_id(stored_id)
-                
+                self._authenticated = True
+
                 # Read and store model number and device name after successful connection
                 self.model_number = await self.read_model_number()
                 self.device_name = await self.read_device_name()
@@ -197,7 +204,7 @@ class EnstoThermostatManager:
         """
         name = label or uuid
 
-        if not self.client or not self.client.is_connected:
+        if not self.client or not self.client.is_connected or not self._authenticated:
             _LOGGER.error("Device not connected, cannot read %s.", name)
             return None
 
@@ -209,6 +216,8 @@ class EnstoThermostatManager:
             return None
         except Exception as e:
             _LOGGER.error("Failed to read %s: %s", name, e)
+            # e.g. a proxy timeout; the connection is unusable
+            self.client = None
             return None
 
     async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
@@ -227,7 +236,7 @@ class EnstoThermostatManager:
         """
         name = label or uuid
 
-        if not self.client or not self.client.is_connected:
+        if not self.client or not self.client.is_connected or not self._authenticated:
             _LOGGER.error("Device not connected, cannot write %s.", name)
             return False
 
@@ -240,6 +249,8 @@ class EnstoThermostatManager:
             return False
         except Exception as e:
             _LOGGER.error("Failed to write %s: %s", name, e)
+            # e.g. a proxy timeout; the connection is unusable
+            self.client = None
             return False
 
     async def write_device_info(self, device_address: str, factory_reset_id: int) -> None:
