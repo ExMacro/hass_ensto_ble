@@ -625,13 +625,13 @@ class EnstoThermostatManager:
         Returns:
             str - Device name if successful, None if failed or device is unnamed
         """
-        # Read the raw bytes
-        raw_data = await self._ble_read(DEVICE_NAME_UUID, "device name")
+        # Device name uses the split protocol (spec 1.1.4, 2.1.2)
+        raw_data = await self._ble_read_split(DEVICE_NAME_UUID, "device name")
         if raw_data is None:
             return None
 
-        # Skip first byte and strip null bytes
-        name_bytes = raw_data[1:].split(b'\x00')[0]
+        # Name is padded with null bytes up to 60 bytes
+        name_bytes = raw_data.split(b'\x00')[0]
 
         # If no actual name data, return None
         if not name_bytes:
