@@ -127,7 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                             enabled_programs = [p for p in result['programs'] if p['enabled']]
                             programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
                             _LOGGER.info("Action [Get Calendar Day %d] for [%s] (%s): %d programs [%s]",
-                                    day, manager.device_name or "Unknown", manager.mac_address, len(enabled_programs), programs_str)
+                                    day, manager.device_name or "Unknown Device", manager.mac_address, len(enabled_programs), programs_str)
                         else:
                             raise HomeAssistantError(f"Could not read calendar day from {manager.device_name or manager.mac_address}")
 
@@ -166,7 +166,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                             enabled_programs = [p for p in programs if p['enabled']]
                             programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
                             _LOGGER.info("Action [Set Calendar Day %d] for [%s] (%s): %d programs saved [%s]",
-                                    day, manager.device_name or "Unknown", manager.mac_address, len(enabled_programs), programs_str)
+                                    day, manager.device_name or "Unknown Device", manager.mac_address, len(enabled_programs), programs_str)
                         else:
                             raise HomeAssistantError(f"Could not write calendar day to {manager.device_name or manager.mac_address}")
 

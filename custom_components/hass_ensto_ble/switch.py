@@ -208,7 +208,7 @@ class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
                 self._additional_info = result
                 _LOGGER.debug(
                     "Read DST settings %s for %s: enabled=%s, winter_to_summer=%s min, summer_to_winter=%s min, timezone_offset=%s min",
-                    self._manager.device_name or "Unknown",
+                    self._manager.device_name or "Unknown Device",
                     self._manager.mac_address,
                     result.get('enabled', False),
                     result.get('winter_to_summer_offset', 0),
@@ -293,7 +293,7 @@ class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
                 local_to = dt_util.as_local(settings['time_to'])
                 _LOGGER.debug(
                     "Updated %s Vacation Mode for %s: enabled=%s, from=%s, to=%s, active=%s",
-                    self._manager.device_name or self._manager.mac_address,
+                    self._manager.device_name or "Unknown Device",
                     self._manager.mac_address,
                     settings.get('enabled', False),
                     local_from.strftime('%Y-%m-%d %H:%M:%S'),

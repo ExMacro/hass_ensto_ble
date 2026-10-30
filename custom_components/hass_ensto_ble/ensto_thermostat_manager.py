@@ -1194,7 +1194,7 @@ class EnstoThermostatManager:
 
         _LOGGER.debug(
             "Wrote energy unit config for %s (%s) - Currency: %s (%d), Price: %.2f",
-            self.device_name, self.mac_address,
+            self.device_name or "Unknown Device", self.mac_address,
             CURRENCY_MAP.get(currency, "Unknown"), currency, price
         )
         return True

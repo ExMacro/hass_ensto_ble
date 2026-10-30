@@ -160,7 +160,7 @@ class EnstoFloorSensorSelect(EnstoBaseEntity, SelectEntity):
                 # Log all values in debug
                 _LOGGER.debug(
                     "Updated %s Floor Sensor for %s: type=%s, resistance=%s, offset=%.1f°C, adc_limits=%d-%d",
-                    self._manager.device_name or self._manager.mac_address,
+                    self._manager.device_name or "Unknown Device",
                     self._manager.mac_address,
                     FLOOR_SENSOR_TYPES.get(sensor_type, 'Unknown'),
                     f"{resistance_25c//1000} kΩ" if resistance_25c >= 1000 else f"{resistance_25c}",

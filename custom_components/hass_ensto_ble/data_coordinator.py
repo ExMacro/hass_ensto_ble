@@ -20,7 +20,7 @@ class EnstoRealTimeCoordinator:
         """Returns cached data if less than 25 seconds old, otherwise reads new."""
         async with self._update_lock:
             now = time.time()
-            device_name = getattr(self._manager, 'device_name', 'Unknown Device')
+            device_name = self._manager.device_name or 'Unknown Device'
             
             if (self._last_data and self._last_update and
                 now - self._last_update < max_age_seconds):
