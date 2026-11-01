@@ -78,6 +78,8 @@ class EnstoThermostatManager:
         # True once the Factory Reset ID is written; reads and writes before that
         # return dummy values or drop the connection (spec 1.1.4, 1.1.5)
         self._authenticated = False
+        # Failed connection still to be closed, so the adapter or proxy releases it
+        self._stale_client: Optional[BleakClient] = None
         # Monotonic time of the last failed clock sync, None after a success
         self._clock_sync_failed_at: Optional[float] = None
 
@@ -111,6 +113,7 @@ class EnstoThermostatManager:
 
     async def cleanup(self) -> None:
         """Clean up the connection."""
+        await self._disconnect_stale_client()
         try:
             if self.client and self.client.is_connected:
                 await self.client.disconnect()
@@ -125,6 +128,9 @@ class EnstoThermostatManager:
             try:
                 if self.client and self.client.is_connected:
                     return
+
+                # A failed connection left open would block the device from reconnecting
+                await self._disconnect_stale_client()
 
                 _LOGGER.debug("Finding device %s", self.mac_address)
                 device = bluetooth.async_ble_device_from_address(self.hass, self.mac_address)
@@ -177,6 +183,8 @@ class EnstoThermostatManager:
 
             except Exception as e:
                 _LOGGER.error("Failed to connect: %s", str(e))
+                if self.client is not None:
+                    self._stale_client = self.client
                 self.client = None
                 raise
             finally:
@@ -263,6 +271,22 @@ class EnstoThermostatManager:
         """
         if self.client is client:
             self.client = None
+            self._stale_client = client
+
+    async def _disconnect_stale_client(self) -> None:
+        """Close a failed connection so the adapter or proxy releases it.
+
+        Otherwise an ESPHome proxy can keep the link open: the device stops
+        advertising and a new connection attempt reuses the broken link.
+        """
+        client, self._stale_client = self._stale_client, None
+        if client is None:
+            return
+        _LOGGER.debug("Closing old connection to %s", self.mac_address)
+        try:
+            await asyncio.wait_for(client.disconnect(), timeout=10)
+        except Exception as e:
+            _LOGGER.debug("Error closing old connection to %s: %s", self.mac_address, e)
 
     async def write_device_info(self, device_address: str, factory_reset_id: int) -> None:
         """Write device info to Home Assistant storage."""
