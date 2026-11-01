@@ -75,6 +75,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         manager.sw_version = await manager.read_software_revision()
         manager.hw_version = await manager.read_hardware_revision()
 
+        # Sensors are created from the first real-time data, so retry setup until it can be read
+        if await manager.get_real_time_coordinator().get_real_time_data() is None:
+            raise Exception("Could not read real-time data")
+
         # Update config entry title with current info
         title = f"{manager.model_number or 'Unknown Model'} {manager.device_name or entry.data['mac_address']}"
         hass.config_entries.async_update_entry(entry, title=title)
