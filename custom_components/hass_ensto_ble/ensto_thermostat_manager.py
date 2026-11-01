@@ -203,21 +203,22 @@ class EnstoThermostatManager:
             Raw bytes from the characteristic, or None on any failure.
         """
         name = label or uuid
+        client = self.client
 
-        if not self.client or not self.client.is_connected or not self._authenticated:
+        if not client or not client.is_connected or not self._authenticated:
             _LOGGER.error("Device not connected, cannot read %s.", name)
             return None
 
         try:
-            return await self.client.read_gatt_char(uuid)
+            return await client.read_gatt_char(uuid)
         except BleakError as e:
             _LOGGER.error("BLE error reading %s: %s", name, e)
-            self.client = None
+            self._drop_client(client)
             return None
         except Exception as e:
             _LOGGER.error("Failed to read %s: %s", name, e)
             # e.g. a proxy timeout; the connection is unusable
-            self.client = None
+            self._drop_client(client)
             return None
 
     async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
@@ -235,23 +236,33 @@ class EnstoThermostatManager:
             True on success, False on any failure.
         """
         name = label or uuid
+        client = self.client
 
-        if not self.client or not self.client.is_connected or not self._authenticated:
+        if not client or not client.is_connected or not self._authenticated:
             _LOGGER.error("Device not connected, cannot write %s.", name)
             return False
 
         try:
-            await self.client.write_gatt_char(uuid, data, response=True)
+            await client.write_gatt_char(uuid, data, response=True)
             return True
         except BleakError as e:
             _LOGGER.error("BLE error writing %s: %s", name, e)
-            self.client = None
+            self._drop_client(client)
             return False
         except Exception as e:
             _LOGGER.error("Failed to write %s: %s", name, e)
             # e.g. a proxy timeout; the connection is unusable
-            self.client = None
+            self._drop_client(client)
             return False
+
+    def _drop_client(self, client: BleakClient) -> None:
+        """Forget a failed connection, unless a newer one has already replaced it.
+
+        A read on an old connection can fail just after connect() has set up a
+        new one; clearing self.client then would throw the new connection away.
+        """
+        if self.client is client:
+            self.client = None
 
     async def write_device_info(self, device_address: str, factory_reset_id: int) -> None:
         """Write device info to Home Assistant storage."""
