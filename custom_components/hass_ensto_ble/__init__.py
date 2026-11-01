@@ -59,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         )
         _LOGGER.debug("Migrated config entry %s to have unique_id", entry.data["mac_address"])
 
+    manager = None
     try:
         # Initialize the thermostat manager
         manager = EnstoThermostatManager(hass, entry.data["mac_address"])
@@ -194,6 +195,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         
     except Exception as ex:
         _LOGGER.error("Error setting up Ensto BLE: %s", str(ex))
+        # Close the connection so the device can be reached on the next attempt
+        if manager is not None:
+            await manager.cleanup()
         raise ConfigEntryNotReady from ex
 
 async def async_unload_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bool:
