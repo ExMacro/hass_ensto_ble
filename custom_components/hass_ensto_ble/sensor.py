@@ -32,6 +32,9 @@ _LOGGER = logging.getLogger(__name__)
 
 UNIT_MINUTES = "min"
 
+# The device updates its history once an hour; read it this long after the full hour
+HISTORY_READ_DELAY = timedelta(minutes=5)
+
 class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
     """Base class for Ensto sensors."""
     _attr_scan_interval = SCAN_INTERVAL
@@ -312,6 +315,8 @@ class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
             "last_12_months": [],
             "temperature_history": []
         }
+        # Hour of the last successful history read, None until the first read
+        self._history_hour = None
 
     async def async_update(self) -> None:
         """Fetch new state data for the sensor."""
@@ -332,12 +337,15 @@ class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
                     for m in result['measurements']
                 ]
 
-            # Get historical monitoring data
-            monitoring_data = await self._manager.read_monitoring_data()
-            if monitoring_data:
-                self._attr_extra_state_attributes["last_7_days"] = monitoring_data['daily_power']
-                self._attr_extra_state_attributes["last_12_months"] = monitoring_data['monthly_power']
-                self._attr_extra_state_attributes["temperature_history"] = monitoring_data['temperature_history']
+            # Historical monitoring data is large, so read it only once an hour
+            history_hour = (dt_util.now() - HISTORY_READ_DELAY).replace(minute=0, second=0, microsecond=0)
+            if history_hour != self._history_hour:
+                monitoring_data = await self._manager.read_monitoring_data()
+                if monitoring_data:
+                    self._history_hour = history_hour
+                    self._attr_extra_state_attributes["last_7_days"] = monitoring_data['daily_power']
+                    self._attr_extra_state_attributes["last_12_months"] = monitoring_data['monthly_power']
+                    self._attr_extra_state_attributes["temperature_history"] = monitoring_data['temperature_history']
 
         except Exception as e:
             _LOGGER.error("Error updating power consumption sensor: %s", e)
