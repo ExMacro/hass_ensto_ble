@@ -279,6 +279,10 @@ Incorrect internal time (e.g., years in the future or past) is commonly caused b
 1. Replace the CR1225 battery (see device installation manual)
 2. The integration synchronizes the time automatically on the next update
 
+### Bluetooth Proxies
+
+See [Bluetooth Proxies](docs/bluetooth-proxies.md) for recommended hardware, setup and troubleshooting.
+
 ## Known Limitations
 
 ### Device Name Writing (Home Assistant OS 16.2+)
