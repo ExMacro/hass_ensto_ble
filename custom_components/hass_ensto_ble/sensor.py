@@ -26,7 +26,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
-from .coordinator import EnstoCoordinator
+from .coordinator import REAL_TIME, EnstoCoordinator
 
 from . import EnstoConfigEntry
 
@@ -61,7 +61,7 @@ class EnstoRealTimeSensor(CoordinatorEntity[EnstoCoordinator], EnstoBaseEntity, 
     @property
     def native_value(self):
         """Return the value from the latest real-time data."""
-        return self.coordinator.data.get(self._data_key)
+        return self.coordinator.data[REAL_TIME].get(self._data_key)
 
 async def async_setup_entry(
     hass: HomeAssistant, # Home Assistant instance
@@ -86,7 +86,7 @@ async def async_setup_entry(
     ]
 
     # Add floor sensor only if value exists and is non-zero
-    if coordinator.data.get("floor_temperature", 0) != 0:
+    if coordinator.data[REAL_TIME].get("floor_temperature", 0) != 0:
         real_time_sensors.append(EnstoTemperatureSensor(coordinator, "floor"))
 
     async_add_entities(real_time_sensors)
@@ -187,7 +187,7 @@ class EnstoNumberSensor(EnstoRealTimeSensor):
             float/int: For other sensors - the numeric value
         """
         if hasattr(self, '_active_alarms_key'):  # Only for alarm sensor
-            data = self.coordinator.data
+            data = self.coordinator.data[REAL_TIME]
             active_alarms = data.get(self._active_alarms_key, [])
             alarm_code = data.get(self._data_key, 0)
 
@@ -376,7 +376,7 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
         # Calculate power if heating power is configured
         if self._heating_power and self._heating_power > 0:
             coordinator = self._manager.coordinator
-            parsed_data = coordinator.data if coordinator.last_update_success else None
+            parsed_data = coordinator.data[REAL_TIME] if coordinator.last_update_success else None
 
             if parsed_data:
                 relay_active = parsed_data.get("relay_active", False)

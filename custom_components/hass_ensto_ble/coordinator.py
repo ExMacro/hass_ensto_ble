@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
@@ -20,9 +21,22 @@ _LOGGER = logging.getLogger(__name__)
 # relay and mode) for about 1.5 s after connecting
 CONNECT_SETTLE_SECONDS = 3
 
+# Coordinator data keys
+REAL_TIME = "real_time"
+BOOST = "boost"
+ADAPTIVE_TEMP = "adaptive_temp"
+DAYLIGHT_SAVING = "daylight_saving"
+VACATION = "vacation"
+CALENDAR_MODE = "calendar_mode"
+
 
 class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Read the thermostat once per update for all entities."""
+    """Read the thermostat once per update for all entities.
+
+    The real-time indication is always read. Other characteristics are read only
+    when an enabled entity uses them: entities pass the data key as their
+    coordinator context, so disabled entities cause no reads.
+    """
 
     def __init__(self, hass: HomeAssistant, manager: EnstoThermostatManager) -> None:
         """Initialize the coordinator.
@@ -39,9 +53,16 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             always_update=False,
         )
         self.manager = manager
+        self._readers: dict[str, Callable[[], Awaitable[Any]]] = {
+            BOOST: manager.read_boost,
+            ADAPTIVE_TEMP: manager.read_adaptive_temp_control,
+            DAYLIGHT_SAVING: manager.read_daylight_saving,
+            VACATION: manager.read_vacation_time,
+            CALENDAR_MODE: manager.read_calendar_mode,
+        }
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Connect if needed and read the real-time indication."""
+        """Connect if needed and read the data the entities use."""
         manager = self.manager
 
         try:
@@ -65,8 +86,38 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not raw_data:
             raise UpdateFailed("Could not read real-time data")
 
-        parsed = manager.parse_real_time_indication(raw_data)
-        if not parsed:
+        real_time = manager.parse_real_time_indication(raw_data)
+        if not real_time:
             raise UpdateFailed("Could not parse real-time data")
 
-        return parsed
+        previous = self.data or {}
+        data = {**previous, REAL_TIME: real_time}
+
+        # Entities are added after the first refresh, so read everything once
+        if self.data is None:
+            keys = set(self._readers)
+        else:
+            keys = set(self.async_contexts()) & set(self._readers)
+
+        for key in keys:
+            value = await self._read(key)
+            # Keep the previous value if one characteristic fails
+            if value is not None:
+                data[key] = value
+
+        return data
+
+    async def _read(self, key: str) -> Any:
+        """Read one characteristic, None on failure."""
+        try:
+            return await self._readers[key]()
+        except Exception as err:
+            _LOGGER.debug("Failed to read %s from %s: %s", key, self.manager.mac_address, err)
+            return None
+
+    async def async_refresh_key(self, key: str) -> None:
+        """Read one characteristic again, e.g. after an entity wrote it."""
+        value = await self._read(key)
+        if value is not None and self.data is not None:
+            self.data[key] = value
+            self.async_update_listeners()

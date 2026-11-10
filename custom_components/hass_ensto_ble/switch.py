@@ -6,11 +6,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from datetime import datetime
 from .base_entity import EnstoBaseEntity
-from .const import SCAN_INTERVAL
+from .coordinator import (
+    ADAPTIVE_TEMP,
+    BOOST,
+    CALENDAR_MODE,
+    DAYLIGHT_SAVING,
+    VACATION,
+    EnstoCoordinator,
+)
 
 from . import EnstoConfigEntry
 
@@ -22,331 +30,241 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback  # Callback to register new entities
 ) -> None:
     """Set up switches from a config entry."""
-    manager = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
 
-    switches = [
-        EnstoBoostSwitch(manager),
-        EnstoAdaptiveTempSwitch(manager),
-        EnstoDaylightSavingSwitch(manager),
-        EnstoVacationModeSwitch(manager),
-        EnstoCalendarModeSwitch(manager),
-    ]
-    async_add_entities(switches, True)
+    async_add_entities([
+        EnstoBoostSwitch(coordinator),
+        EnstoAdaptiveTempSwitch(coordinator),
+        EnstoDaylightSavingSwitch(coordinator),
+        EnstoVacationModeSwitch(coordinator),
+        EnstoCalendarModeSwitch(coordinator),
+    ])
 
-class EnstoBoostSwitch(EnstoBaseEntity, SwitchEntity):
+class EnstoCoordinatorSwitch(CoordinatorEntity[EnstoCoordinator], EnstoBaseEntity, SwitchEntity):
+    """Base class for switches that show a value read by the coordinator.
+
+    The data key is passed as the coordinator context, so the coordinator
+    reads the characteristic only while the switch is enabled.
+    """
+    _attr_has_entity_name = True
+    _data_key: str
+
+    def __init__(self, coordinator: EnstoCoordinator):
+        """Initialize the switch."""
+        CoordinatorEntity.__init__(self, coordinator, context=self._data_key)
+        EnstoBaseEntity.__init__(self, coordinator.manager)
+
+    @property
+    def _value(self) -> dict | None:
+        """Return the latest value read for this switch."""
+        return self.coordinator.data.get(self._data_key)
+
+    @property
+    def available(self) -> bool:
+        """Return True when the coordinator has data for this switch."""
+        return super().available and self._value is not None
+
+    async def _async_refresh(self) -> None:
+        """Read the characteristic again after a write, so the state shows the device."""
+        await self.coordinator.async_refresh_key(self._data_key)
+
+class EnstoBoostSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Boost switch.
-    
+
     Controls temporary temperature boost functionality with configurable
     duration and temperature offset."""
-    
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
 
-    def __init__(self, manager):
+    _data_key = BOOST
+
+    def __init__(self, coordinator):
         """Initialize the switch."""
-        super().__init__(manager)   # Call parent class __init__
+        super().__init__(coordinator)
         self._attr_name = "Boost mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_boost_switch"
-        self._is_on = False
-        self._boost_settings = None
 
     @property
     def is_on(self) -> bool:
         """Return true if boost mode is active, raising temperature temporarily."""
-        return self._is_on
+        boost = self._value
+        return boost['enabled'] and boost['remaining_minutes'] != 0
+
+    async def _async_set_boost(self, enabled: bool) -> None:
+        """Enable or disable boost, keeping the other boost settings."""
+        try:
+            # Read fresh settings, the coordinator data can be up to 30 s old
+            settings = await self._manager.read_boost()
+            if settings:
+                await self._manager.write_boost(
+                    enabled=enabled,
+                    offset_degrees=settings['offset_degrees'],
+                    offset_percentage=settings['offset_percentage'],
+                    duration_minutes=settings['setpoint_minutes']
+                )
+        except Exception as e:
+            _LOGGER.error("Failed to %s boost mode: %s", "enable" if enabled else "disable", e)
+        await self._async_refresh()
 
     async def async_turn_on(self, **kwargs) -> None:
-       """Turn the boost on."""
-       try:
-           self._boost_settings = await self._manager.read_boost()
-           if self._boost_settings:
-               await self._manager.write_boost(
-                   enabled=True,
-                   offset_degrees=self._boost_settings['offset_degrees'],
-                   offset_percentage=self._boost_settings['offset_percentage'],
-                   duration_minutes=self._boost_settings['setpoint_minutes']
-               )
-               self._is_on = True
-       except Exception as e:
-           _LOGGER.error("Failed to enable boost mode: %s", e)
+        """Turn the boost on."""
+        await self._async_set_boost(True)
 
     async def async_turn_off(self, **kwargs) -> None:
-       """Turn the boost off."""
-       try:
-           self._boost_settings = await self._manager.read_boost()
-           if self._boost_settings:
-               await self._manager.write_boost(
-                   enabled=False,
-                   offset_degrees=self._boost_settings['offset_degrees'],
-                   offset_percentage=self._boost_settings['offset_percentage'],
-                   duration_minutes=self._boost_settings['setpoint_minutes']
-               )
-               self._is_on = False
-       except Exception as e:
-           _LOGGER.error("Failed to disable boost mode: %s", e)
+        """Turn the boost off."""
+        await self._async_set_boost(False)
 
-    async def async_update(self) -> None:
-        """Update boost state."""
-        try:
-            self._boost_settings = await self._manager.read_boost()
-            if self._boost_settings:
-                self._is_on = self._boost_settings['enabled']
-                # Check for remaining minutes
-                if self._boost_settings['remaining_minutes'] == 0:
-                    self._is_on = False
-        except Exception as e:
-            _LOGGER.error("Error updating boost state: %s", e)
-
-class EnstoAdaptiveTempSwitch(EnstoBaseEntity, SwitchEntity):
+class EnstoAdaptiveTempSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Adaptive Temperature Control switch."""
-    
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
 
-    def __init__(self, manager):
+    _data_key = ADAPTIVE_TEMP
+
+    def __init__(self, coordinator):
         """Initialize the switch."""
-        super().__init__(manager)  # Call parent class __init__
+        super().__init__(coordinator)
         self._attr_name = "Adaptive temperature control"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_adaptive_temp_switch"
-        self._is_on = False
 
     @property
     def is_on(self) -> bool:
         """Return true if adaptive temperature control is active (auto-adjusts based on conditions)."""
-        return self._is_on
+        return self._value['enabled']
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn adaptive temperature control on."""
         await self._manager.write_adaptive_temp_control(True)
-        self._is_on = True
+        await self._async_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn adaptive temperature control off."""
         await self._manager.write_adaptive_temp_control(False)
-        self._is_on = False
+        await self._async_refresh()
 
-    async def async_update(self) -> None:
-        """Update adaptive temperature control state."""
-        try:
-            result = await self._manager.read_adaptive_temp_control()
-            if result:
-                self._is_on = result['enabled']
-        except Exception as e:
-            _LOGGER.error("Error updating adaptive temperature control state: %s", e)
-
-class EnstoDaylightSavingSwitch(EnstoBaseEntity, SwitchEntity):
+class EnstoDaylightSavingSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Daylight Saving switch."""
-    
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
 
-    def __init__(self, manager):
+    _data_key = DAYLIGHT_SAVING
+
+    def __init__(self, coordinator):
         """Initialize the switch."""
-        super().__init__(manager)
+        super().__init__(coordinator)
         self._attr_name = "Daylight saving"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_daylight_saving_switch"
-        self._is_on = False
-        self._additional_info = None
 
     @property
     def is_on(self) -> bool:
         """Return true if daylight saving is enabled."""
-        return self._is_on
+        return self._value['enabled']
+
+    async def _async_set_daylight_saving(self, enabled: bool) -> None:
+        """Enable or disable daylight saving."""
+        # Send base timezone (standard time) like the Ensto app does, the device
+        # adds the DST offset itself. The device stores the offset as int8, so
+        # the summer offset (180) would not fit.
+        # Get base timezone using January date (ensures standard time)
+        ha_tz = dt_util.DEFAULT_TIME_ZONE
+        january_utc = datetime(2025, 1, 15, 12, 0, 0, tzinfo=dt_util.UTC)
+        january_local = january_utc.astimezone(ha_tz)
+        tz_offset = int(january_local.utcoffset().total_seconds() / 60)
+
+        action = "Enable" if enabled else "Disable"
+        _LOGGER.debug("Action [Daylight Saving %s] for [%s]: base timezone offset %d minutes",
+                      action, self._manager.mac_address, tz_offset)
+
+        if await self._manager.write_daylight_saving(
+            enabled=enabled,
+            winter_to_summer=0,  # Ensto app writes 0, device does not store it
+            summer_to_winter=0,
+            timezone_offset=tz_offset
+        ):
+            _LOGGER.debug("Action [Daylight Saving %s] for [%s]: success",
+                          action, self._manager.mac_address)
+        await self._async_refresh()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn daylight saving on."""
-        
-        # DST ON: Send base timezone (standard time), let device handle DST
-        ha_tz = dt_util.DEFAULT_TIME_ZONE
-        
-        # Get base timezone using January date (ensures standard time)
-        # Create January datetime in UTC and convert to local timezone
-        january_utc = datetime(2025, 1, 15, 12, 0, 0, tzinfo=dt_util.UTC)
-        january_local = january_utc.astimezone(ha_tz)
-        tz_offset = int(january_local.utcoffset().total_seconds() / 60)
-        
-        _LOGGER.debug("Action [Daylight Saving Enable] for [%s]: base timezone offset %d minutes", self._manager.mac_address, tz_offset)
-
-        await self._manager.write_daylight_saving(
-            enabled=True,
-            winter_to_summer=0,  # Ensto app writes 0, device does not store it
-            summer_to_winter=0,
-            timezone_offset=tz_offset
-        )
-        self._is_on = True
-        
-        _LOGGER.debug("Action [Daylight Saving Enable] for [%s]: successfully enabled", self._manager.mac_address)
+        await self._async_set_daylight_saving(True)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn daylight saving off."""
-        
-        # DST OFF: Send base timezone (standard time) like the Ensto app does.
-        # The device stores the offset as int8, so the summer offset (180) would not fit.
-        ha_tz = dt_util.DEFAULT_TIME_ZONE
-        january_utc = datetime(2025, 1, 15, 12, 0, 0, tzinfo=dt_util.UTC)
-        january_local = january_utc.astimezone(ha_tz)
-        tz_offset = int(january_local.utcoffset().total_seconds() / 60)
+        await self._async_set_daylight_saving(False)
 
-        _LOGGER.debug("Action [Daylight Saving Disable] for [%s]: base timezone offset %d minutes", self._manager.mac_address, tz_offset)
-
-        await self._manager.write_daylight_saving(
-            enabled=False,
-            winter_to_summer=0,  # Ensto app writes 0, device does not store it
-            summer_to_winter=0,
-            timezone_offset=tz_offset
-        )
-        self._is_on = False
-        
-        _LOGGER.debug("Action [Daylight Saving Disable] for [%s]: successfully disabled", self._manager.mac_address)
-
-    async def async_update(self) -> None:
-        """Update daylight saving state."""
-        try:
-            result = await self._manager.read_daylight_saving()
-            if result:
-                self._is_on = result['enabled']
-                self._additional_info = result
-                _LOGGER.debug(
-                    "Read DST settings %s for %s: enabled=%s, winter_to_summer=%s min, summer_to_winter=%s min, timezone_offset=%s min",
-                    self._manager.device_name or "Unknown Device",
-                    self._manager.mac_address,
-                    result.get('enabled', False),
-                    result.get('winter_to_summer_offset', 0),
-                    result.get('summer_to_winter_offset', 0),
-                    result.get('timezone_offset', 0)
-                )
-        except Exception as e:
-            _LOGGER.error("Error updating daylight saving state: %s", e)
-
-class EnstoVacationModeSwitch(EnstoBaseEntity, SwitchEntity):
+class EnstoVacationModeSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Vacation Mode switch."""
-    
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
 
-    def __init__(self, manager):
+    _data_key = VACATION
+
+    def __init__(self, coordinator):
         """Initialize the switch."""
-        super().__init__(manager)
+        super().__init__(coordinator)
         self._attr_name = "Vacation mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_vacation_mode_switch"
         self._attr_icon = "mdi:palm-tree"
-        self._is_on = False
 
     @property
     def is_on(self) -> bool:
         """Return true if vacation mode is active."""
-        return self._is_on
+        return self._value.get('enabled', False)
+
+    async def _async_set_vacation(self, enabled: bool) -> None:
+        """Enable or disable vacation mode, keeping the vacation settings."""
+        try:
+            # Read fresh settings, the coordinator data can be up to 30 s old
+            settings = await self._manager.read_vacation_time()
+            if settings:
+                await self._manager.write_vacation_time(
+                    time_from=settings['time_from'],
+                    time_to=settings['time_to'],
+                    offset_temperature=settings['offset_temperature'],
+                    offset_percentage=settings['offset_percentage'],
+                    enabled=enabled
+                )
+
+                # Notify datetime entities to update
+                async_dispatcher_send(
+                    self.hass,
+                    f"ensto_datetime_update_{self._manager.mac_address}"
+                )
+
+        except Exception as e:
+            _LOGGER.error("Failed to %s vacation mode: %s", "enable" if enabled else "disable", e)
+        await self._async_refresh()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn vacation mode on."""
-        try:
-            settings = await self._manager.read_vacation_time()
-            if settings:
-                await self._manager.write_vacation_time(
-                    time_from=settings['time_from'],
-                    time_to=settings['time_to'],
-                    offset_temperature=settings['offset_temperature'],
-                    offset_percentage=settings['offset_percentage'],
-                    enabled=True
-                )
-                self._is_on = True
-
-                # Notify datetime entities to update
-                async_dispatcher_send(
-                    self.hass,
-                    f"ensto_datetime_update_{self._manager.mac_address}"
-                )
-
-        except Exception as e:
-            _LOGGER.error("Failed to enable vacation mode: %s", e)
+        await self._async_set_vacation(True)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn vacation mode off."""
-        try:
-            settings = await self._manager.read_vacation_time()
-            if settings:
-                await self._manager.write_vacation_time(
-                    time_from=settings['time_from'],
-                    time_to=settings['time_to'],
-                    offset_temperature=settings['offset_temperature'],
-                    offset_percentage=settings['offset_percentage'],
-                    enabled=False
-                )
-                self._is_on = False
+        await self._async_set_vacation(False)
 
-                # Notify datetime entities to update
-                async_dispatcher_send(
-                    self.hass,
-                    f"ensto_datetime_update_{self._manager.mac_address}"
-                )
-
-        except Exception as e:
-            _LOGGER.error("Failed to disable vacation mode: %s", e)
-
-    async def async_update(self) -> None:
-        """Update vacation mode state."""
-        try:
-            settings = await self._manager.read_vacation_time()
-            if settings:
-                # Format debug message consistently with other components
-                local_from = dt_util.as_local(settings['time_from'])
-                local_to = dt_util.as_local(settings['time_to'])
-                _LOGGER.debug(
-                    "Updated %s Vacation Mode for %s: enabled=%s, from=%s, to=%s, active=%s",
-                    self._manager.device_name or "Unknown Device",
-                    self._manager.mac_address,
-                    settings.get('enabled', False),
-                    local_from.strftime('%Y-%m-%d %H:%M:%S'),
-                    local_to.strftime('%Y-%m-%d %H:%M:%S'),
-                    settings.get('active', False)
-                )
-
-                self._is_on = settings.get('enabled', False)
-        except Exception as e:
-            _LOGGER.error("Error updating vacation mode state: %s", e)
-
-class EnstoCalendarModeSwitch(EnstoBaseEntity, SwitchEntity):
+class EnstoCalendarModeSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Calendar Mode switch."""
-    
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
 
-    def __init__(self, manager):
+    _data_key = CALENDAR_MODE
+
+    def __init__(self, coordinator):
         """Initialize the switch."""
-        super().__init__(manager)
+        super().__init__(coordinator)
         self._attr_name = "Calendar mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_calendar_mode_switch"
         self._attr_icon = "mdi:calendar-clock"
-        self._is_on = False
 
     @property
     def is_on(self) -> bool:
         """Return true if calendar mode is active."""
-        return self._is_on
+        return self._value['enabled']
+
+    async def _async_set_calendar_mode(self, enabled: bool) -> None:
+        """Enable or disable calendar mode."""
+        try:
+            await self._manager.write_calendar_mode(enabled)
+        except Exception as e:
+            _LOGGER.error("Failed to %s calendar mode: %s", "enable" if enabled else "disable", e)
+        await self._async_refresh()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn calendar mode on."""
-        try:
-            success = await self._manager.write_calendar_mode(True)
-            if success:
-                self._is_on = True
-        except Exception as e:
-            _LOGGER.error("Failed to enable calendar mode: %s", e)
+        await self._async_set_calendar_mode(True)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn calendar mode off."""
-        try:
-            success = await self._manager.write_calendar_mode(False)
-            if success:
-                self._is_on = False
-        except Exception as e:
-            _LOGGER.error("Failed to disable calendar mode: %s", e)
-
-    async def async_update(self) -> None:
-        """Update calendar mode state."""
-        try:
-            result = await self._manager.read_calendar_mode()
-            if result:
-                self._is_on = result['enabled']
-        except Exception as e:
-            _LOGGER.error("Error updating calendar mode state: %s", e)
+        await self._async_set_calendar_mode(False)
