@@ -12,7 +12,6 @@ from .storage_manager import EnstoStorageManager
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from homeassistant.util import dt as dt_util
-from .data_coordinator import EnstoRealTimeCoordinator
 
 from .const import (
     MANUFACTURER_ID,
@@ -73,7 +72,8 @@ class EnstoThermostatManager:
         self.storage_manager = EnstoStorageManager(hass)
         self.model_number = None
         self.device_name = None
-        self.real_time_coordinator = None
+        # EnstoCoordinator, created in async_setup_entry
+        self.coordinator = None
         self.connected_at: Optional[float] = None
         # True once the Factory Reset ID is written; reads and writes before that
         # return dummy values or drop the connection (spec 1.1.4, 1.1.5)
@@ -82,11 +82,6 @@ class EnstoThermostatManager:
         self._stale_client: Optional[BleakClient] = None
         # Monotonic time of the last failed clock sync, None after a success
         self._clock_sync_failed_at: Optional[float] = None
-
-    def get_real_time_coordinator(self):
-        if not self.real_time_coordinator:
-            self.real_time_coordinator = EnstoRealTimeCoordinator(self)
-        return self.real_time_coordinator
 
     def supports_external_control(self) -> bool:
         """Check if firmware supports external control (1.14+)."""

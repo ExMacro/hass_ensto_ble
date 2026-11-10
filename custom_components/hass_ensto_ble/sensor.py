@@ -22,9 +22,11 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity
+from .coordinator import EnstoCoordinator
 
 from . import EnstoConfigEntry
 
@@ -36,51 +38,30 @@ UNIT_MINUTES = "min"
 HISTORY_READ_DELAY = timedelta(minutes=5)
 
 class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
-    """Base class for Ensto sensors."""
+    """Base class for Ensto sensors that read their own value."""
     _attr_scan_interval = SCAN_INTERVAL
     _attr_has_entity_name = True
 
     def __init__(self, manager, sensor_type):
-        """Initialize the DateTime sensor for Ensto thermostat."""
+        """Initialize the sensor."""
         super().__init__(manager)
         self._sensor_type = sensor_type
         self._attr_should_poll = True
-        self._last_parsed_data = None
 
-    async def async_added_to_hass(self) -> None:
-        """Subscribe to updates."""
-        async def _update_immediately(*args):
-            """Force immediate update."""
-            await self.async_update()
-            self.async_write_ha_state()
+class EnstoRealTimeSensor(CoordinatorEntity[EnstoCoordinator], EnstoBaseEntity, SensorEntity):
+    """Base class for sensors that show a value from the real-time indication."""
+    _attr_has_entity_name = True
 
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                f"ensto_update_{self._manager.mac_address}",
-                _update_immediately
-            )
-        )
+    def __init__(self, coordinator: EnstoCoordinator, sensor_type):
+        """Initialize the sensor."""
+        CoordinatorEntity.__init__(self, coordinator)
+        EnstoBaseEntity.__init__(self, coordinator.manager)
+        self._sensor_type = sensor_type
 
-    async def async_update(self) -> None:
-        """Fetch new state data for the sensor."""
-        try:
-            coordinator = self._manager.get_real_time_coordinator()
-            parsed_data = await coordinator.get_real_time_data()
-
-            if parsed_data:
-                self._last_parsed_data = parsed_data
-                self._attr_native_value = parsed_data[self._data_key]
-                
-            _LOGGER.debug(
-                "Updated %s for %s: %s",
-                self._attr_name,
-                self._manager.mac_address,
-                self._attr_native_value
-            )
-
-        except Exception as e:
-            _LOGGER.error("Error updating sensor: %s", e)
+    @property
+    def native_value(self):
+        """Return the value from the latest real-time data."""
+        return self.coordinator.data.get(self._data_key)
 
 async def async_setup_entry(
     hass: HomeAssistant, # Home Assistant instance
@@ -89,43 +70,42 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors from a config entry."""
     manager = entry.runtime_data
-    
-    # Check floor sensor availability
-    parsed_data = await manager.get_real_time_coordinator().get_real_time_data()
-    sensors = []
-    
-    if parsed_data is not None:
-        # Add sensors
-        sensors.extend([
-            EnstoTemperatureSensor(manager, "room"),
-            EnstoTemperatureSensor(manager, "target"),
-            EnstoStateSensor(manager, "relay"),
-            EnstoStateSensor(manager, "boost"),
-            EnstoModeSensor(manager, "active"),
-            EnstoModeSensor(manager, "heating"),
-            EnstoNumberSensor(manager, "boost_setpoint"),
-            EnstoNumberSensor(manager, "boost_remaining"),
-            EnstoNumberSensor(manager, "alarm"),
-            EnstoDateTimeSensor(manager),
-            EnstoPowerConsumptionSensor(manager),
-            EnstoNameSensor(manager),
-            EnstoCurrentPowerSensor(manager),
-            EnstoEnergySensor(manager),
-        ])
+    coordinator = manager.coordinator
 
-        # Add floor sensor only if value exists and is non-zero
-        if parsed_data.get("floor_temperature", 0) != 0:
-            sensors.append(EnstoTemperatureSensor(manager, "floor"))
-    
-    async_add_entities(sensors, True)
+    # The coordinator already holds the first data, so these need no update before adding
+    real_time_sensors = [
+        EnstoTemperatureSensor(coordinator, "room"),
+        EnstoTemperatureSensor(coordinator, "target"),
+        EnstoStateSensor(coordinator, "relay"),
+        EnstoStateSensor(coordinator, "boost"),
+        EnstoModeSensor(coordinator, "active"),
+        EnstoModeSensor(coordinator, "heating"),
+        EnstoNumberSensor(coordinator, "boost_setpoint"),
+        EnstoNumberSensor(coordinator, "boost_remaining"),
+        EnstoNumberSensor(coordinator, "alarm"),
+    ]
 
-class EnstoTemperatureSensor(EnstoBaseSensor):
+    # Add floor sensor only if value exists and is non-zero
+    if coordinator.data.get("floor_temperature", 0) != 0:
+        real_time_sensors.append(EnstoTemperatureSensor(coordinator, "floor"))
+
+    async_add_entities(real_time_sensors)
+
+    async_add_entities([
+        EnstoDateTimeSensor(manager),
+        EnstoPowerConsumptionSensor(manager),
+        EnstoNameSensor(manager),
+        EnstoCurrentPowerSensor(manager),
+        EnstoEnergySensor(manager),
+    ], True)
+
+class EnstoTemperatureSensor(EnstoRealTimeSensor):
     """Temperature sensor for Ensto thermostat."""
 
-    def __init__(self, manager, sensor_type):
+    def __init__(self, coordinator, sensor_type):
         """Initialize the temperature sensor."""
 
-        super().__init__(manager, sensor_type)
+        super().__init__(coordinator, sensor_type)
         
         # Set common attributes for all temperature sensors
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -145,12 +125,12 @@ class EnstoTemperatureSensor(EnstoBaseSensor):
 
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_temp"
 
-class EnstoStateSensor(EnstoBaseSensor):
+class EnstoStateSensor(EnstoRealTimeSensor):
     """State sensor for Ensto thermostat."""
 
-    def __init__(self, manager, sensor_type):
+    def __init__(self, coordinator, sensor_type):
         """Initialize the sensor."""
-        super().__init__(manager, sensor_type)
+        super().__init__(coordinator, sensor_type)
         
         if sensor_type == "relay":
             self._attr_name = "Relay state"
@@ -161,12 +141,12 @@ class EnstoStateSensor(EnstoBaseSensor):
 
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_state"
 
-class EnstoModeSensor(EnstoBaseSensor):
+class EnstoModeSensor(EnstoRealTimeSensor):
     """Mode sensor for Ensto thermostat."""
 
-    def __init__(self, manager, sensor_type):
+    def __init__(self, coordinator, sensor_type):
         """Initialize the sensor."""
-        super().__init__(manager, sensor_type)
+        super().__init__(coordinator, sensor_type)
         
         if sensor_type == "active":
             self._attr_name = "Active mode"
@@ -177,12 +157,12 @@ class EnstoModeSensor(EnstoBaseSensor):
 
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_{sensor_type}_mode"
 
-class EnstoNumberSensor(EnstoBaseSensor):
+class EnstoNumberSensor(EnstoRealTimeSensor):
     """Number sensor for Ensto thermostat."""
 
-    def __init__(self, manager, sensor_type):
+    def __init__(self, coordinator, sensor_type):
         """Initialize the sensor."""
-        super().__init__(manager, sensor_type)
+        super().__init__(coordinator, sensor_type)
         
         if "boost" in sensor_type:
             self._attr_native_unit_of_measurement = UNIT_MINUTES
@@ -207,21 +187,15 @@ class EnstoNumberSensor(EnstoBaseSensor):
             float/int: For other sensors - the numeric value
         """
         if hasattr(self, '_active_alarms_key'):  # Only for alarm sensor
-            try:
-                if self._last_parsed_data is None:
-                    return None
-                    
-                active_alarms = self._last_parsed_data.get(self._active_alarms_key, [])
-                alarm_code = self._last_parsed_data.get(self._data_key, 0)
+            data = self.coordinator.data
+            active_alarms = data.get(self._active_alarms_key, [])
+            alarm_code = data.get(self._data_key, 0)
 
-                if not active_alarms:
-                    return "No active errors"
-                return f"Error {alarm_code}: {', '.join(active_alarms)}"
-            except Exception as e:
-                _LOGGER.error("Error formatting alarm status: %s", e)
-                return None
+            if not active_alarms:
+                return "No active errors"
+            return f"Error {alarm_code}: {', '.join(active_alarms)}"
 
-        return self._attr_native_value  # Default behavior for other number sensors
+        return super().native_value  # Default behavior for other number sensors
 
 class EnstoDateTimeSensor(EnstoBaseSensor):
     """DateTime sensor for Ensto thermostat."""
@@ -401,11 +375,8 @@ class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
         
         # Calculate power if heating power is configured
         if self._heating_power and self._heating_power > 0:
-            try:
-                parsed_data = await self._manager.get_real_time_coordinator().get_real_time_data()
-            except Exception as e:
-                _LOGGER.error("Error updating current power sensor: %s", e)
-                parsed_data = None
+            coordinator = self._manager.coordinator
+            parsed_data = coordinator.data if coordinator.last_update_success else None
 
             if parsed_data:
                 relay_active = parsed_data.get("relay_active", False)
