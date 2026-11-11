@@ -67,6 +67,8 @@ class EnstoThermostatManager:
         """Initialize the manager."""
         self.hass = hass
         self.mac_address = mac_address
+        self._gatt_lock = asyncio.Lock()
+        self._last_successful_read: Optional[float] = None
         self.client: Optional[BleakClient] = None
         self._connect_lock = asyncio.Lock()
         self.scanner = None
@@ -198,7 +200,7 @@ class EnstoThermostatManager:
             await self.connect()
 
     async def _ble_read(self, uuid: str, label: str = "") -> Optional[bytes]:
-        """Read a single GATT characteristic.
+        """Read a single GATT characteristic under the GATT lock.
 
         Not suitable for split-packet characteristics; use _ble_read_split() for those.
 
@@ -210,6 +212,11 @@ class EnstoThermostatManager:
         Returns:
             Raw bytes from the characteristic, or None on any failure.
         """
+        async with self._gatt_lock:
+            return await self._ble_read_unlocked(uuid, label)
+
+    async def _ble_read_unlocked(self, uuid: str, label: str = "") -> Optional[bytes]:
+        """Internal unlocked implementation of single GATT read."""
         name = label or uuid
         client = self.client
 
@@ -218,7 +225,9 @@ class EnstoThermostatManager:
             return None
 
         try:
-            return await client.read_gatt_char(uuid)
+            data = await client.read_gatt_char(uuid)
+            self._last_successful_read = time.monotonic()
+            return data
         except BleakError as e:
             _LOGGER.error("BLE error reading %s: %s", name, e)
             self._drop_client(client)
@@ -230,7 +239,7 @@ class EnstoThermostatManager:
             return None
 
     async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
-        """Write a single GATT characteristic with response=True.
+        """Write a single GATT characteristic with response=True under the GATT lock.
 
         Not suitable for split-packet characteristics; use _ble_write_split() for those.
 
@@ -243,6 +252,11 @@ class EnstoThermostatManager:
         Returns:
             True on success, False on any failure.
         """
+        async with self._gatt_lock:
+            return await self._ble_write_unlocked(uuid, data, label)
+
+    async def _ble_write_unlocked(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
+        """Internal unlocked implementation of single GATT write."""
         name = label or uuid
         client = self.client
 
@@ -252,6 +266,7 @@ class EnstoThermostatManager:
 
         try:
             await client.write_gatt_char(uuid, data, response=True)
+            self._last_successful_read = time.monotonic()
             return True
         except BleakError as e:
             _LOGGER.error("BLE error writing %s: %s", name, e)
@@ -350,10 +365,15 @@ class EnstoThermostatManager:
             raise Exception(f"Failed to write factory reset ID: {e}") from e
 
     async def _ble_read_split(self, uuid: str, label: str = "") -> Optional[bytes]:
-        """Read a split-packet characteristic and return the combined payload.
+        """Read a split-packet characteristic and return the combined payload."""
+        async with self._gatt_lock:
+            return await self._ble_read_split_unlocked(uuid, label)
+
+    async def _ble_read_split_unlocked(self, uuid: str, label: str = "") -> Optional[bytes]:
+        """Internal unlocked implementation of split read.
 
         Each packet starts with a header byte; bit 0x40 marks the last packet.
-        Packets are read with _ble_read(), so connection checks and BLE error
+        Packets are read with _ble_read_unlocked(), so connection checks and BLE error
         handling are the same as for single reads.
 
         Args:
@@ -367,7 +387,7 @@ class EnstoThermostatManager:
         combined = bytearray()
 
         for _ in range(MAX_SPLIT_PACKETS):
-            packet = await self._ble_read(uuid, label)
+            packet = await self._ble_read_unlocked(uuid, label)
             if packet is None:
                 return None
             if not packet:
@@ -386,11 +406,16 @@ class EnstoThermostatManager:
         return bytes(combined).rstrip(b'\x00')
 
     async def _ble_write_split(self, uuid: str, data: bytes, label: str = "") -> bool:
-        """Write a split-packet characteristic as two packets.
+        """Write a split-packet characteristic as two packets."""
+        async with self._gatt_lock:
+            return await self._ble_write_split_unlocked(uuid, data, label)
+
+    async def _ble_write_split_unlocked(self, uuid: str, data: bytes, label: str = "") -> bool:
+        """Internal unlocked implementation of split write.
 
         The payload is always split into two halves. The first packet has
         header 0x80 and the last packet header 0x40. Packets are written with
-        _ble_write(), so connection checks and BLE error handling are the same
+        _ble_write_unlocked(), so connection checks and BLE error handling are the same
         as for single writes.
 
         Args:
@@ -410,7 +435,7 @@ class EnstoThermostatManager:
             packet = bytearray([header]) + chunk
             _LOGGER.debug("Writing %s packet %d/%d: %s", name, index, len(chunks), packet.hex())
 
-            if not await self._ble_write(uuid, packet, label):
+            if not await self._ble_write_unlocked(uuid, packet, label):
                 return False
 
             # Small delay between packets
