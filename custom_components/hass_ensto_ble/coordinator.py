@@ -28,6 +28,9 @@ ADAPTIVE_TEMP = "adaptive_temp"
 DAYLIGHT_SAVING = "daylight_saving"
 VACATION = "vacation"
 CALENDAR_MODE = "calendar_mode"
+HEATING_MODE = "heating_mode"
+FLOOR_SENSOR = "floor_sensor"
+FORCE_CONTROL = "force_control"
 
 
 class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -59,7 +62,13 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             DAYLIGHT_SAVING: manager.read_daylight_saving,
             VACATION: manager.read_vacation_time,
             CALENDAR_MODE: manager.read_calendar_mode,
+            HEATING_MODE: manager.read_heating_mode,
         }
+        # Only these models and firmware versions have the characteristic
+        if "ECO16" in (manager.model_number or ""):
+            self._readers[FLOOR_SENSOR] = manager.read_floor_sensor_config
+        if manager.supports_external_control():
+            self._readers[FORCE_CONTROL] = manager.read_force_control
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Connect if needed and read the data the entities use."""

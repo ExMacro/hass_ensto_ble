@@ -6,18 +6,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from datetime import datetime
-from .base_entity import EnstoBaseEntity
+from .base_entity import EnstoCoordinatorEntity
 from .coordinator import (
     ADAPTIVE_TEMP,
     BOOST,
     CALENDAR_MODE,
     DAYLIGHT_SAVING,
     VACATION,
-    EnstoCoordinator,
 )
 
 from . import EnstoConfigEntry
@@ -40,33 +38,8 @@ async def async_setup_entry(
         EnstoCalendarModeSwitch(coordinator),
     ])
 
-class EnstoCoordinatorSwitch(CoordinatorEntity[EnstoCoordinator], EnstoBaseEntity, SwitchEntity):
-    """Base class for switches that show a value read by the coordinator.
-
-    The data key is passed as the coordinator context, so the coordinator
-    reads the characteristic only while the switch is enabled.
-    """
-    _attr_has_entity_name = True
-    _data_key: str
-
-    def __init__(self, coordinator: EnstoCoordinator):
-        """Initialize the switch."""
-        CoordinatorEntity.__init__(self, coordinator, context=self._data_key)
-        EnstoBaseEntity.__init__(self, coordinator.manager)
-
-    @property
-    def _value(self) -> dict | None:
-        """Return the latest value read for this switch."""
-        return self.coordinator.data.get(self._data_key)
-
-    @property
-    def available(self) -> bool:
-        """Return True when the coordinator has data for this switch."""
-        return super().available and self._value is not None
-
-    async def _async_refresh(self) -> None:
-        """Read the characteristic again after a write, so the state shows the device."""
-        await self.coordinator.async_refresh_key(self._data_key)
+class EnstoCoordinatorSwitch(EnstoCoordinatorEntity, SwitchEntity):
+    """Base class for switches that show a value read by the coordinator."""
 
 class EnstoBoostSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Boost switch.
