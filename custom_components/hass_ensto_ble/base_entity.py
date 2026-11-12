@@ -46,15 +46,20 @@ class EnstoBaseEntity(Entity):
 class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEntity):
     """Base class for entities that show a value read by the coordinator.
 
-    Subclasses set _data_key. It is passed as the coordinator context, so the
-    coordinator reads the characteristic only while the entity is enabled.
+    Subclasses set _data_key, and _extra_keys for other data the entity uses
+    (e.g. the heating mode for availability). The keys are passed as the
+    coordinator context, so the coordinator reads them only while the entity
+    is enabled.
     """
     _attr_has_entity_name = True
     _data_key: str
+    _extra_keys: tuple[str, ...] = ()
 
     def __init__(self, coordinator: EnstoCoordinator) -> None:
         """Initialize the entity."""
-        CoordinatorEntity.__init__(self, coordinator, context=self._data_key)
+        CoordinatorEntity.__init__(
+            self, coordinator, context=(self._data_key, *self._extra_keys)
+        )
         EnstoBaseEntity.__init__(self, coordinator.manager)
 
     @property

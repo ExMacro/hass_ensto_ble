@@ -31,14 +31,19 @@ CALENDAR_MODE = "calendar_mode"
 HEATING_MODE = "heating_mode"
 FLOOR_SENSOR = "floor_sensor"
 FORCE_CONTROL = "force_control"
+FLOOR_LIMITS = "floor_limits"
+FLOOR_AREA = "floor_area"
+ROOM_CALIBRATION = "room_calibration"
+HEATING_POWER = "heating_power"
+ENERGY_UNIT = "energy_unit"
 
 
 class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Read the thermostat once per update for all entities.
 
     The real-time indication is always read. Other characteristics are read only
-    when an enabled entity uses them: entities pass the data key as their
-    coordinator context, so disabled entities cause no reads.
+    when an enabled entity uses them: entities pass the data keys they use as
+    their coordinator context, so disabled entities cause no reads.
     """
 
     def __init__(self, hass: HomeAssistant, manager: EnstoThermostatManager) -> None:
@@ -63,10 +68,15 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             VACATION: manager.read_vacation_time,
             CALENDAR_MODE: manager.read_calendar_mode,
             HEATING_MODE: manager.read_heating_mode,
+            ROOM_CALIBRATION: manager.read_room_sensor_calibration,
+            HEATING_POWER: manager.read_heating_power,
+            ENERGY_UNIT: manager.read_energy_unit,
         }
         # Only these models and firmware versions have the characteristic
         if "ECO16" in (manager.model_number or ""):
             self._readers[FLOOR_SENSOR] = manager.read_floor_sensor_config
+            self._readers[FLOOR_LIMITS] = manager.read_floor_limits
+            self._readers[FLOOR_AREA] = manager.read_floor_area
         if manager.supports_external_control():
             self._readers[FORCE_CONTROL] = manager.read_force_control
 
@@ -102,11 +112,15 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous = self.data or {}
         data = {**previous, REAL_TIME: real_time}
 
-        # Entities are added after the first refresh, so read everything once
+        # Entities are added after the first refresh, so read everything once.
+        # Each entity's context is a tuple of the data keys it uses.
         if self.data is None:
             keys = set(self._readers)
         else:
-            keys = set(self.async_contexts()) & set(self._readers)
+            keys = set()
+            for context in self.async_contexts():
+                keys.update(context)
+            keys &= set(self._readers)
 
         for key in keys:
             value = await self._read(key)
