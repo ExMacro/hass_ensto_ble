@@ -67,8 +67,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         
         # Setup scanner and verify connection
         manager.setup()
-        await manager.ensure_connection()
-        
+        try:
+            await manager.ensure_connection()
+        except Exception as ex:
+            # Home Assistant logs the retry and shows the cause on the integration page
+            raise ConfigEntryNotReady from ex
+
         # Store the manager instance in runtime_data
         entry.runtime_data = manager
 
@@ -198,12 +202,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         
         return True
         
-    except Exception as ex:
-        _LOGGER.error("Error setting up Ensto BLE: %s", str(ex))
+    except Exception:
         # Close the connection so the device can be reached on the next attempt
         if manager is not None:
             await manager.cleanup()
-        raise ConfigEntryNotReady from ex
+        raise
 
 async def async_unload_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> bool:
     """Unload a config entry."""
