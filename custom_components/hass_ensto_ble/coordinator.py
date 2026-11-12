@@ -5,10 +5,12 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
 
@@ -20,6 +22,9 @@ _LOGGER = logging.getLogger(__name__)
 # A device that has just powered up can report invalid values (wrong target, floor,
 # relay and mode) for about 1.5 s after connecting
 CONNECT_SETTLE_SECONDS = 3
+
+# Synchronize the device clock when it differs from Home Assistant by more than this
+CLOCK_SYNC_THRESHOLD = timedelta(minutes=1)
 
 # Coordinator data keys
 REAL_TIME = "real_time"
@@ -36,6 +41,22 @@ FLOOR_AREA = "floor_area"
 ROOM_CALIBRATION = "room_calibration"
 HEATING_POWER = "heating_power"
 ENERGY_UNIT = "energy_unit"
+DATE_TIME = "date_time"
+
+
+def device_utc(date_time: dict[str, int]) -> datetime | None:
+    """Return the device clock as a UTC datetime, None if the values are invalid.
+
+    The device clock runs in UTC; it handles DST and time zone itself.
+    """
+    try:
+        return datetime(
+            date_time['year'], date_time['month'], date_time['day'],
+            date_time['hour'], date_time['minute'], date_time['second'],
+            tzinfo=dt_util.UTC,
+        )
+    except ValueError:
+        return None
 
 
 class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -71,6 +92,7 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ROOM_CALIBRATION: manager.read_room_sensor_calibration,
             HEATING_POWER: manager.read_heating_power,
             ENERGY_UNIT: manager.read_energy_unit,
+            DATE_TIME: manager.read_date_and_time,
         }
         # Only these models and firmware versions have the characteristic
         if "ECO16" in (manager.model_number or ""):
@@ -125,10 +147,34 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for key in keys:
             value = await self._read(key)
             # Keep the previous value if one characteristic fails
-            if value is not None:
-                data[key] = value
+            if value is None:
+                continue
+            if key == DATE_TIME and device_utc(value) is None:
+                # Keep showing the previous clock, like the sensor did before
+                _LOGGER.error("Error updating datetime: invalid device clock %s", value)
+                continue
+            data[key] = value
+            if key == DATE_TIME:
+                await self._sync_clock(data)
 
         return data
+
+    async def _sync_clock(self, data: dict[str, Any]) -> None:
+        """Set the device clock to Home Assistant time if it has drifted.
+
+        A power cut resets the device clock, so this runs whenever the clock is read.
+        """
+        ha_utc = dt_util.utcnow()
+        drift = abs(ha_utc - device_utc(data[DATE_TIME]))
+        if drift <= CLOCK_SYNC_THRESHOLD:
+            return
+
+        if await self.manager.sync_date_and_time(drift.total_seconds()):
+            # The device clock now has Home Assistant time
+            data[DATE_TIME] = {
+                'year': ha_utc.year, 'month': ha_utc.month, 'day': ha_utc.day,
+                'hour': ha_utc.hour, 'minute': ha_utc.minute, 'second': ha_utc.second,
+            }
 
     async def _read(self, key: str) -> Any:
         """Read one characteristic, None on failure."""

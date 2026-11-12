@@ -1,6 +1,6 @@
 """Support for Ensto BLE sensors."""
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -17,7 +17,6 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -26,7 +25,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity, EnstoCoordinatorEntity
-from .coordinator import HEATING_POWER, REAL_TIME, EnstoCoordinator
+from .coordinator import DATE_TIME, HEATING_POWER, REAL_TIME, EnstoCoordinator, device_utc
 
 from . import EnstoConfigEntry
 
@@ -84,6 +83,7 @@ async def async_setup_entry(
         EnstoNumberSensor(coordinator, "boost_remaining"),
         EnstoNumberSensor(coordinator, "alarm"),
         EnstoCurrentPowerSensor(coordinator),
+        EnstoDateTimeSensor(coordinator),
     ]
 
     # Add floor sensor only if value exists and is non-zero
@@ -93,7 +93,6 @@ async def async_setup_entry(
     async_add_entities(coordinator_sensors)
 
     async_add_entities([
-        EnstoDateTimeSensor(manager),
         EnstoPowerConsumptionSensor(manager),
         EnstoNameSensor(manager),
         EnstoEnergySensor(manager),
@@ -197,76 +196,30 @@ class EnstoNumberSensor(EnstoRealTimeSensor):
 
         return super().native_value  # Default behavior for other number sensors
 
-class EnstoDateTimeSensor(EnstoBaseSensor):
-    """DateTime sensor for Ensto thermostat."""
+class EnstoDateTimeSensor(EnstoCoordinatorEntity, SensorEntity):
+    """DateTime sensor for Ensto thermostat.
 
-    def __init__(self, manager):
+    The coordinator reads the device clock (UTC) and synchronizes it with
+    Home Assistant when it has drifted.
+    """
+
+    _data_key = DATE_TIME
+
+    def __init__(self, coordinator):
         """Initialize the sensor."""
-        super().__init__(manager, "datetime")
+        super().__init__(coordinator)
         self._attr_name = "Date and time"
         # Create a unique ID for the sensor using MAC address
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_datetime"
-        self._attr_native_value = None
 
-    async def async_added_to_hass(self) -> None:
-            """Subscribe to updates."""
-            async def _update_immediately(*args):
-                """Force immediate update."""
-                await self.async_update()
-                self.async_write_ha_state()
-
-            # Subscribe to general updates
-            self.async_on_remove(
-                async_dispatcher_connect(
-                    self.hass,
-                    f"ensto_update_{self._manager.mac_address}",
-                    _update_immediately
-                )
-            )
-
-            # Subscribe to datetime specific updates
-            self.async_on_remove(
-                async_dispatcher_connect(
-                    self.hass,
-                    f"ensto_datetime_update_{self._manager.mac_address}",
-                    _update_immediately
-                )
-            )
-
-    async def async_update(self) -> None:
-        """Fetch new state data for the sensor.
-        
-        The device internally operates in UTC time and handles DST/timezone conversions
-        based on its own settings. We read UTC time from device and compare it with
-        HA's UTC time, and synchronize the device clock if they differ.
-        """
-        try:
-            # Get current date and time from the device (in UTC)
-            data = await self._manager.read_date_and_time()
-            if data:
-                # Create datetime object from device data (in UTC)
-                device_utc = datetime(
-                    data['year'], data['month'], data['day'],
-                    data['hour'], data['minute'], data['second'],
-                    tzinfo=dt_util.UTC  # Mark explicitly as UTC
-                )
-                
-                # Convert UTC time from device to local time for display
-                # This affects both UI and history - timestamps are stored in local time
-                device_local = dt_util.as_local(device_utc)
-                self._attr_native_value = device_local.strftime("%-d.%-m.%Y %-H:%M")
-
-                # Get HA time in UTC for proper comparison
-                ha_utc = dt_util.utcnow()
-                time_diff = abs(ha_utc - device_utc)
-                
-                # Synchronize device clock if time difference is more than 1 minute
-                if time_diff > timedelta(minutes=1):
-                    if await self._manager.sync_date_and_time(time_diff.total_seconds()):
-                        self._attr_native_value = dt_util.as_local(ha_utc).strftime("%-d.%-m.%Y %-H:%M")
-
-        except Exception as e:
-            _LOGGER.error("Error updating datetime: %s", e)
+    @property
+    def native_value(self) -> str | None:
+        """Return the device clock in local time, None if it is invalid."""
+        clock = device_utc(self._value)
+        if clock is None:
+            return None
+        # Shown in local time, also in the history
+        return dt_util.as_local(clock).strftime("%-d.%-m.%Y %-H:%M")
 
 class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
     """Sensor for monitoring power consumption."""
