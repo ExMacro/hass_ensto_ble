@@ -4,7 +4,6 @@ import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 
@@ -190,13 +189,6 @@ class EnstoVacationModeSwitch(EnstoCoordinatorSwitch):
                     offset_percentage=settings['offset_percentage'],
                     enabled=enabled
                 )
-
-                # Notify datetime entities to update
-                async_dispatcher_send(
-                    self.hass,
-                    f"ensto_datetime_update_{self._manager.mac_address}"
-                )
-
         except Exception as e:
             _LOGGER.error("Failed to %s vacation mode: %s", "enable" if enabled else "disable", e)
         await self._async_refresh()
