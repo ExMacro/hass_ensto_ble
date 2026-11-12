@@ -25,8 +25,8 @@ from homeassistant.helpers import entity_registry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import SCAN_INTERVAL
-from .base_entity import EnstoBaseEntity
-from .coordinator import REAL_TIME, EnstoCoordinator
+from .base_entity import EnstoBaseEntity, EnstoCoordinatorEntity
+from .coordinator import HEATING_POWER, REAL_TIME, EnstoCoordinator
 
 from . import EnstoConfigEntry
 
@@ -73,7 +73,7 @@ async def async_setup_entry(
     coordinator = manager.coordinator
 
     # The coordinator already holds the first data, so these need no update before adding
-    real_time_sensors = [
+    coordinator_sensors = [
         EnstoTemperatureSensor(coordinator, "room"),
         EnstoTemperatureSensor(coordinator, "target"),
         EnstoStateSensor(coordinator, "relay"),
@@ -83,19 +83,19 @@ async def async_setup_entry(
         EnstoNumberSensor(coordinator, "boost_setpoint"),
         EnstoNumberSensor(coordinator, "boost_remaining"),
         EnstoNumberSensor(coordinator, "alarm"),
+        EnstoCurrentPowerSensor(coordinator),
     ]
 
     # Add floor sensor only if value exists and is non-zero
     if coordinator.data[REAL_TIME].get("floor_temperature", 0) != 0:
-        real_time_sensors.append(EnstoTemperatureSensor(coordinator, "floor"))
+        coordinator_sensors.append(EnstoTemperatureSensor(coordinator, "floor"))
 
-    async_add_entities(real_time_sensors)
+    async_add_entities(coordinator_sensors)
 
     async_add_entities([
         EnstoDateTimeSensor(manager),
         EnstoPowerConsumptionSensor(manager),
         EnstoNameSensor(manager),
-        EnstoCurrentPowerSensor(manager),
         EnstoEnergySensor(manager),
     ], True)
 
@@ -341,50 +341,35 @@ class EnstoNameSensor(EnstoBaseSensor):
         """Fetch current device name."""
         self._attr_native_value = self._manager.device_name
 
-class EnstoCurrentPowerSensor(EnstoBaseEntity, SensorEntity):
-    """Current power consumption sensor showing real-time heating power usage."""
-    
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
+class EnstoCurrentPowerSensor(EnstoCoordinatorEntity, SensorEntity):
+    """Current power consumption sensor showing real-time heating power usage.
 
-    def __init__(self, manager):
+    The heating power setting while the relay is on, 0 W while it is off.
+    """
+
+    _data_key = HEATING_POWER
+
+    def __init__(self, coordinator):
         """Initialize the current power sensor."""
-        super().__init__(manager)
-        
+        super().__init__(coordinator)
+
         # Set sensor properties for Home Assistant energy integration
         self._attr_name = "Current power"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_current_power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        
-        # Initialize internal state tracking
-        self._heating_power = None
 
     @property
     def available(self) -> bool:
         """Return if sensor is available when heating power is configured."""
-        return self._heating_power is not None and self._heating_power > 0
+        return super().available and self._value['heating_power'] > 0
 
-    async def async_update(self) -> None:
-        """Update the current power consumption value."""
-        # Read heating power setting
-        heating_power_result = await self._manager.read_heating_power()
-        if heating_power_result:
-            self._heating_power = heating_power_result['heating_power']
-        
-        # Calculate power if heating power is configured
-        if self._heating_power and self._heating_power > 0:
-            coordinator = self._manager.coordinator
-            parsed_data = coordinator.data[REAL_TIME] if coordinator.last_update_success else None
-
-            if parsed_data:
-                relay_active = parsed_data.get("relay_active", False)
-                self._attr_native_value = self._heating_power if relay_active else 0
-            else:
-                self._attr_native_value = None
-        else:
-            self._attr_native_value = None
+    @property
+    def native_value(self) -> int:
+        """Return the heating power while the relay is on, otherwise 0 W."""
+        relay_active = self.coordinator.data[REAL_TIME].get("relay_active", False)
+        return self._value['heating_power'] if relay_active else 0
 
 class EnstoEnergySensor(EnstoBaseEntity, SensorEntity, RestoreEntity):
     """Energy consumption sensor (kWh) calculated from Current Power sensor."""
