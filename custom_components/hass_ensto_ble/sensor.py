@@ -1,6 +1,5 @@
 """Support for Ensto BLE sensors."""
 import logging
-from datetime import timedelta
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -25,16 +24,21 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity, EnstoCoordinatorEntity
-from .coordinator import DATE_TIME, HEATING_POWER, REAL_TIME, EnstoCoordinator, device_utc
+from .coordinator import (
+    DATE_TIME,
+    HEATING_POWER,
+    MONITORING,
+    POWER_CONSUMPTION,
+    REAL_TIME,
+    EnstoCoordinator,
+    device_utc,
+)
 
 from . import EnstoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 UNIT_MINUTES = "min"
-
-# The device updates its history once an hour; read it this long after the full hour
-HISTORY_READ_DELAY = timedelta(minutes=5)
 
 class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):
     """Base class for Ensto sensors that read their own value."""
@@ -84,6 +88,7 @@ async def async_setup_entry(
         EnstoNumberSensor(coordinator, "alarm"),
         EnstoCurrentPowerSensor(coordinator),
         EnstoDateTimeSensor(coordinator),
+        EnstoPowerConsumptionSensor(coordinator),
     ]
 
     # Add floor sensor only if value exists and is non-zero
@@ -93,7 +98,6 @@ async def async_setup_entry(
     async_add_entities(coordinator_sensors)
 
     async_add_entities([
-        EnstoPowerConsumptionSensor(manager),
         EnstoNameSensor(manager),
         EnstoEnergySensor(manager),
     ], True)
@@ -221,61 +225,47 @@ class EnstoDateTimeSensor(EnstoCoordinatorEntity, SensorEntity):
         # Shown in local time, also in the history
         return dt_util.as_local(clock).strftime("%-d.%-m.%Y %-H:%M")
 
-class EnstoPowerConsumptionSensor(EnstoBaseEntity, SensorEntity):
-    """Sensor for monitoring power consumption."""
+class EnstoPowerConsumptionSensor(EnstoCoordinatorEntity, SensorEntity):
+    """Sensor for monitoring power consumption.
 
-    _attr_scan_interval = SCAN_INTERVAL
-    _attr_has_entity_name = True
+    The state is the latest hourly power usage. The last 24 hours come with
+    every read; the longer history comes from the monitoring data, which the
+    coordinator reads once an hour.
+    """
 
-    def __init__(self, manager):
+    _data_key = POWER_CONSUMPTION
+    _extra_keys = (MONITORING,)
+
+    def __init__(self, coordinator):
         """Initialize the sensor."""
-        super().__init__(manager)
+        super().__init__(coordinator)
         self._attr_name = "Power usage"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_power_usage"
         self._attr_native_unit_of_measurement = "%"
         self._attr_device_class = SensorDeviceClass.POWER_FACTOR
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_value = None
-        self._attr_extra_state_attributes = {
-            "last_24h": [],
-            "last_7_days": [],
-            "last_12_months": [],
-            "temperature_history": []
+
+    @property
+    def native_value(self) -> int:
+        """Return the latest power usage; the first measurement is the newest."""
+        return self._value['measurements'][0]['ratio']
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return the power and temperature history."""
+        monitoring = self.coordinator.data.get(MONITORING) or {}
+        return {
+            "last_24h": [
+                {
+                    "time": m['timestamp'].isoformat(),
+                    "ratio": m['ratio']
+                }
+                for m in self._value['measurements']
+            ],
+            "last_7_days": monitoring.get('daily_power', []),
+            "last_12_months": monitoring.get('monthly_power', []),
+            "temperature_history": monitoring.get('temperature_history', []),
         }
-        # Hour of the last successful history read, None until the first read
-        self._history_hour = None
-
-    async def async_update(self) -> None:
-        """Fetch new state data for the sensor."""
-        try:
-            # Get real-time power consumption
-            result = await self._manager.read_power_consumption()
-            if result and result['measurements']:
-                # Set latest value as the main state
-                current = result['measurements'][0]  # First measurement is newest
-                self._attr_native_value = current['ratio']
-                
-                # Update last 24h history
-                self._attr_extra_state_attributes["last_24h"] = [
-                    {
-                        "time": m['timestamp'].isoformat(),
-                        "ratio": m['ratio']
-                    }
-                    for m in result['measurements']
-                ]
-
-            # Historical monitoring data is large, so read it only once an hour
-            history_hour = (dt_util.now() - HISTORY_READ_DELAY).replace(minute=0, second=0, microsecond=0)
-            if history_hour != self._history_hour:
-                monitoring_data = await self._manager.read_monitoring_data()
-                if monitoring_data:
-                    self._history_hour = history_hour
-                    self._attr_extra_state_attributes["last_7_days"] = monitoring_data['daily_power']
-                    self._attr_extra_state_attributes["last_12_months"] = monitoring_data['monthly_power']
-                    self._attr_extra_state_attributes["temperature_history"] = monitoring_data['temperature_history']
-
-        except Exception as e:
-            _LOGGER.error("Error updating power consumption sensor: %s", e)
 
 class EnstoNameSensor(EnstoBaseSensor):
     """Name sensor for Ensto thermostat."""

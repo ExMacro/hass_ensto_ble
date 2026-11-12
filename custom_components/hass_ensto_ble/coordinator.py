@@ -26,6 +26,9 @@ CONNECT_SETTLE_SECONDS = 3
 # Synchronize the device clock when it differs from Home Assistant by more than this
 CLOCK_SYNC_THRESHOLD = timedelta(minutes=1)
 
+# The device updates its history once an hour; read it this long after the full hour
+HISTORY_READ_DELAY = timedelta(minutes=5)
+
 # Coordinator data keys
 REAL_TIME = "real_time"
 BOOST = "boost"
@@ -42,6 +45,8 @@ ROOM_CALIBRATION = "room_calibration"
 HEATING_POWER = "heating_power"
 ENERGY_UNIT = "energy_unit"
 DATE_TIME = "date_time"
+POWER_CONSUMPTION = "power_consumption"
+MONITORING = "monitoring"
 
 
 def device_utc(date_time: dict[str, int]) -> datetime | None:
@@ -82,6 +87,8 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             always_update=False,
         )
         self.manager = manager
+        # Hour of the last successful monitoring data read, None until the first read
+        self._history_hour: datetime | None = None
         self._readers: dict[str, Callable[[], Awaitable[Any]]] = {
             BOOST: manager.read_boost,
             ADAPTIVE_TEMP: manager.read_adaptive_temp_control,
@@ -93,6 +100,8 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             HEATING_POWER: manager.read_heating_power,
             ENERGY_UNIT: manager.read_energy_unit,
             DATE_TIME: manager.read_date_and_time,
+            POWER_CONSUMPTION: manager.read_power_consumption,
+            MONITORING: manager.read_monitoring_data,
         }
         # Only these models and firmware versions have the characteristic
         if "ECO16" in (manager.model_number or ""):
@@ -144,6 +153,11 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 keys.update(context)
             keys &= set(self._readers)
 
+        # Monitoring data is large, so read it only once an hour
+        history_hour = (dt_util.now() - HISTORY_READ_DELAY).replace(minute=0, second=0, microsecond=0)
+        if history_hour == self._history_hour:
+            keys.discard(MONITORING)
+
         for key in keys:
             value = await self._read(key)
             # Keep the previous value if one characteristic fails
@@ -153,9 +167,14 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Keep showing the previous clock, like the sensor did before
                 _LOGGER.error("Error updating datetime: invalid device clock %s", value)
                 continue
+            if key == POWER_CONSUMPTION and not value['measurements']:
+                # Keep the previous power usage when the device returns no measurements
+                continue
             data[key] = value
             if key == DATE_TIME:
                 await self._sync_clock(data)
+            elif key == MONITORING:
+                self._history_hour = history_hour
 
         return data
 
