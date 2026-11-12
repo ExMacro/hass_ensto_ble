@@ -18,6 +18,9 @@ from . import EnstoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+# One write at a time, so read-modify-write actions don't overwrite each other
+PARALLEL_UPDATES = 1
+
 # Reverse mapping for easy lookup
 FLOOR_SENSOR_TYPES = {v['sensor_type']: k for k, v in FLOOR_SENSOR_CONFIG.items()}
 

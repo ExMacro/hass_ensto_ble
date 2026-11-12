@@ -38,6 +38,9 @@ from . import EnstoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+# The coordinator reads the data, so entity updates need no limit
+PARALLEL_UPDATES = 0
+
 UNIT_MINUTES = "min"
 
 class EnstoBaseSensor(EnstoBaseEntity, SensorEntity):

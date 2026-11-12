@@ -30,6 +30,9 @@ from . import EnstoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+# One write at a time, so read-modify-write actions don't overwrite each other
+PARALLEL_UPDATES = 1
+
 # Heating modes that change which numbers are available
 COMBINATION_MODE = 3
 POWER_MODE = 4
