@@ -162,7 +162,8 @@ class EnstoThermostatManager:
                         else:
                             raise Exception("Could not get Factory Reset ID from device")
                     except Exception as e:
-                        _LOGGER.error("Error reading Factory Reset ID from device: %s", e)
+                        # The caller reports the error
+                        _LOGGER.debug("Error reading Factory Reset ID from device: %s", e)
                         raise
                 
                 # Write Factory Reset ID to device
@@ -177,7 +178,8 @@ class EnstoThermostatManager:
                 self.connected_at = time.monotonic()
 
             except Exception as e:
-                _LOGGER.error("Failed to connect: %s", str(e))
+                # The caller reports the error: setup retry, coordinator or config flow
+                _LOGGER.debug("Failed to connect to %s: %s", self.mac_address, e)
                 if self.client is not None:
                     self._stale_client = self.client
                 self.client = None
