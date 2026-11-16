@@ -1,6 +1,7 @@
 """Config flow for Ensto BLE integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -51,12 +52,18 @@ class EnstoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         manager = EnstoThermostatManager(self.hass, "")
         manager.setup()
         
-        # Scan for devices that are in pairing mode
-        pairing_devices = manager.find_devices_in_pairing_mode()
+        # Scan for devices that are in pairing mode (wait up to 60 seconds)
+        pairing_devices = {}
+        for attempt in range(12):
+            pairing_devices = manager.find_devices_in_pairing_mode()
+            if pairing_devices:
+                break
+            if attempt < 11:
+                await asyncio.sleep(5)
 
         if not pairing_devices:
             return self.async_abort(
-                reason="No Ensto BLE devices in pairing mode. Hold BLE reset button for >0.5 seconds. Blue LED will blink."
+                reason="No Ensto BLE devices in pairing mode found after 60 seconds. Hold BLE reset button for >0.5 seconds. Blue LED will blink."
             )
 
         self._discovered_devices = {}
