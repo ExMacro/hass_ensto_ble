@@ -1,0 +1,4 @@
+pytest-homeassistant-custom-component
+bleak-retry-connector
+aiousbwatcher
+pyserial
