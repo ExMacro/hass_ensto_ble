@@ -22,7 +22,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import SCAN_INTERVAL
+from .const import DOMAIN, SCAN_INTERVAL
 from .base_entity import EnstoBaseEntity, EnstoCoordinatorEntity
 from .coordinator import (
     DATE_TIME,
@@ -80,7 +80,6 @@ async def async_setup_entry(
 
     # The coordinator already holds the first data, so these need no update before adding
     coordinator_sensors = [
-        EnstoTemperatureSensor(coordinator, "room"),
         EnstoTemperatureSensor(coordinator, "target"),
         EnstoStateSensor(coordinator, "relay"),
         EnstoStateSensor(coordinator, "boost"),
@@ -97,6 +96,28 @@ async def async_setup_entry(
     # Add floor sensor only if value exists and is non-zero
     if coordinator.data[REAL_TIME].get("floor_temperature", 0) != 0:
         coordinator_sensors.append(EnstoTemperatureSensor(coordinator, "floor"))
+
+    # Add room sensor only if valid (not created if absent / invalid)
+    if coordinator.data[REAL_TIME].get("room_temperature") is not None:
+        coordinator_sensors.append(EnstoTemperatureSensor(coordinator, "room"))
+    else:
+        # Clean up orphaned room temperature entity from registry if device has no room sensor
+        try:
+            ent_reg = entity_registry.async_get(hass)
+            room_unique_id = f"{dr.format_mac(manager.mac_address)}_room_temp"
+            entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, room_unique_id)
+            if entity_id:
+                _LOGGER.info(
+                    "Removing obsolete room temperature entity %s (device has no room sensor)",
+                    entity_id,
+                )
+                ent_reg.async_remove(entity_id)
+        except Exception as err:
+            _LOGGER.debug(
+                "Could not check/clean entity registry for %s: %s",
+                manager.mac_address,
+                err,
+            )
 
     async_add_entities(coordinator_sensors)
 
