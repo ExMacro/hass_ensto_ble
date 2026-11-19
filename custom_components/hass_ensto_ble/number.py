@@ -110,19 +110,14 @@ class EnstoBoostDurationNumber(EnstoCoordinatorNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the boost duration."""
-        try:
-            # Read fresh settings, the coordinator data can be up to 30 s old
-            settings = await self._manager.read_boost()
-            if settings:
-                await self._manager.write_boost(
-                    enabled=settings['enabled'],
-                    offset_degrees=settings['offset_degrees'],
-                    offset_percentage=settings['offset_percentage'],
-                    duration_minutes=int(value)
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to set boost duration: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        settings = await self._read_current(self._manager.read_boost)
+        await self._write(self._manager.write_boost(
+            enabled=settings['enabled'],
+            offset_degrees=settings['offset_degrees'],
+            offset_percentage=settings['offset_percentage'],
+            duration_minutes=int(value)
+        ))
 
 class EnstoBoostOffsetNumber(EnstoCoordinatorNumber):
     """Number entity for controlling boost temperature offset."""
@@ -155,19 +150,14 @@ class EnstoBoostOffsetNumber(EnstoCoordinatorNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the boost temperature offset."""
-        try:
-            # Read fresh settings, the coordinator data can be up to 30 s old
-            settings = await self._manager.read_boost()
-            if settings:
-                await self._manager.write_boost(
-                    enabled=settings['enabled'],
-                    offset_degrees=value,
-                    offset_percentage=settings['offset_percentage'],
-                    duration_minutes=settings['setpoint_minutes']
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to set boost temperature offset: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        settings = await self._read_current(self._manager.read_boost)
+        await self._write(self._manager.write_boost(
+            enabled=settings['enabled'],
+            offset_degrees=value,
+            offset_percentage=settings['offset_percentage'],
+            duration_minutes=settings['setpoint_minutes']
+        ))
 
 class EnstoBoostPowerOffsetNumber(EnstoCoordinatorNumber):
     """Number entity for controlling boost power offset percentage.
@@ -208,18 +198,14 @@ class EnstoBoostPowerOffsetNumber(EnstoCoordinatorNumber):
         Reads current boost settings and updates only the power
         offset while preserving other settings.
         """
-        try:
-            settings = await self._manager.read_boost()
-            if settings:
-                await self._manager.write_boost(
-                    enabled=settings['enabled'],
-                    offset_degrees=settings['offset_degrees'],
-                    offset_percentage=int(value),
-                    duration_minutes=settings['setpoint_minutes']
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to set boost power offset: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        settings = await self._read_current(self._manager.read_boost)
+        await self._write(self._manager.write_boost(
+            enabled=settings['enabled'],
+            offset_degrees=settings['offset_degrees'],
+            offset_percentage=int(value),
+            duration_minutes=settings['setpoint_minutes']
+        ))
 
 class EnstoFloorLimitNumber(EnstoCoordinatorNumber):
     """Control floor temperature limits.
@@ -303,11 +289,8 @@ class EnstoRoomSensorCalibrationNumber(EnstoCoordinatorNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update room sensor calibration value."""
-        try:
-            await self._manager.write_room_sensor_calibration(value)
-        except Exception as e:
-            _LOGGER.error("Failed to set room sensor calibration: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(self._manager.write_room_sensor_calibration(value))
 
 class EnstoHeatingPowerNumber(EnstoCoordinatorNumber):
     """Number entity for controlling heating power."""
@@ -334,12 +317,9 @@ class EnstoHeatingPowerNumber(EnstoCoordinatorNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the heating power value."""
-        try:
-            # Convert float to integer as heating power is an integer
-            await self._manager.write_heating_power(int(value))
-        except Exception as e:
-            _LOGGER.error("Failed to set custom heating power: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        # Convert float to integer as heating power is an integer
+        await self._write(self._manager.write_heating_power(int(value)))
 
 class EnstoFloorAreaNumber(EnstoCoordinatorNumber):
     """Number entity for controlling floor area."""
@@ -366,12 +346,9 @@ class EnstoFloorAreaNumber(EnstoCoordinatorNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the floor area value."""
-        try:
-            # Convert float to integer as floor area is an integer
-            await self._manager.write_floor_area(int(value))
-        except Exception as e:
-            _LOGGER.error("Failed to set custom floor area: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        # Convert float to integer as floor area is an integer
+        await self._write(self._manager.write_floor_area(int(value)))
 
 class EnstoEnergyUnitPriceNumber(EnstoCoordinatorNumber):
     """Number entity for controlling energy unit price."""
@@ -401,11 +378,8 @@ class EnstoEnergyUnitPriceNumber(EnstoCoordinatorNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the energy unit price value."""
-        try:
-            await self._manager.write_energy_unit(self._currency, value)
-        except Exception as e:
-            _LOGGER.error("Failed to set energy unit price: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(self._manager.write_energy_unit(self._currency, value))
 
 class EnstoVacationTempOffsetNumber(EnstoCoordinatorNumber):
     """Number entity for vacation mode temperature offset in celsius."""
