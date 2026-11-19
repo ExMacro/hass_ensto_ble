@@ -65,19 +65,14 @@ class EnstoBoostSwitch(EnstoCoordinatorSwitch):
 
     async def _async_set_boost(self, enabled: bool) -> None:
         """Enable or disable boost, keeping the other boost settings."""
-        try:
-            # Read fresh settings, the coordinator data can be up to 30 s old
-            settings = await self._manager.read_boost()
-            if settings:
-                await self._manager.write_boost(
-                    enabled=enabled,
-                    offset_degrees=settings['offset_degrees'],
-                    offset_percentage=settings['offset_percentage'],
-                    duration_minutes=settings['setpoint_minutes']
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to %s boost mode: %s", "enable" if enabled else "disable", e)
-        await self._async_refresh()
+        self._check_connected()
+        settings = await self._read_current(self._manager.read_boost)
+        await self._write(self._manager.write_boost(
+            enabled=enabled,
+            offset_degrees=settings['offset_degrees'],
+            offset_percentage=settings['offset_percentage'],
+            duration_minutes=settings['setpoint_minutes']
+        ))
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the boost on."""
@@ -105,13 +100,13 @@ class EnstoAdaptiveTempSwitch(EnstoCoordinatorSwitch):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn adaptive temperature control on."""
-        await self._manager.write_adaptive_temp_control(True)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(self._manager.write_adaptive_temp_control(True))
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn adaptive temperature control off."""
-        await self._manager.write_adaptive_temp_control(False)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(self._manager.write_adaptive_temp_control(False))
 
 class EnstoDaylightSavingSwitch(EnstoCoordinatorSwitch):
     """Representation of Ensto Daylight Saving switch."""
@@ -144,15 +139,13 @@ class EnstoDaylightSavingSwitch(EnstoCoordinatorSwitch):
         _LOGGER.debug("Action [Daylight Saving %s] for [%s]: base timezone offset %d minutes",
                       action, self._manager.mac_address, tz_offset)
 
-        if await self._manager.write_daylight_saving(
+        self._check_connected()
+        await self._write(self._manager.write_daylight_saving(
             enabled=enabled,
             winter_to_summer=0,  # Ensto app writes 0, device does not store it
             summer_to_winter=0,
             timezone_offset=tz_offset
-        ):
-            _LOGGER.debug("Action [Daylight Saving %s] for [%s]: success",
-                          action, self._manager.mac_address)
-        await self._async_refresh()
+        ))
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn daylight saving on."""
@@ -181,20 +174,18 @@ class EnstoVacationModeSwitch(EnstoCoordinatorSwitch):
 
     async def _async_set_vacation(self, enabled: bool) -> None:
         """Enable or disable vacation mode, keeping the vacation settings."""
-        try:
-            # Read fresh settings, the coordinator data can be up to 30 s old
-            settings = await self._manager.read_vacation_time()
-            if settings:
-                await self._manager.write_vacation_time(
-                    time_from=settings['time_from'],
-                    time_to=settings['time_to'],
-                    offset_temperature=settings['offset_temperature'],
-                    offset_percentage=settings['offset_percentage'],
-                    enabled=enabled
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to %s vacation mode: %s", "enable" if enabled else "disable", e)
-        await self._async_refresh()
+        self._check_connected()
+        settings = await self._read_current(self._manager.read_vacation_time)
+        # Turning off is always allowed, so an ended vacation can be cleared
+        if enabled:
+            self._check_vacation_not_ended(settings)
+        await self._write(self._manager.write_vacation_time(
+            time_from=settings['time_from'],
+            time_to=settings['time_to'],
+            offset_temperature=settings['offset_temperature'],
+            offset_percentage=settings['offset_percentage'],
+            enabled=enabled
+        ))
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn vacation mode on."""
@@ -223,11 +214,8 @@ class EnstoCalendarModeSwitch(EnstoCoordinatorSwitch):
 
     async def _async_set_calendar_mode(self, enabled: bool) -> None:
         """Enable or disable calendar mode."""
-        try:
-            await self._manager.write_calendar_mode(enabled)
-        except Exception as e:
-            _LOGGER.error("Failed to %s calendar mode: %s", "enable" if enabled else "disable", e)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(self._manager.write_calendar_mode(enabled))
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn calendar mode on."""

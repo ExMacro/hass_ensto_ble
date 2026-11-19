@@ -99,6 +99,15 @@ class EnstoThermostatManager:
             _LOGGER.debug("Could not parse firmware version: %s", self.sw_version)
             return False
 
+    @property
+    def is_connected(self) -> bool:
+        """Return True when the connection is open and authenticated.
+
+        Returns:
+            True if reads and writes can be sent to the device.
+        """
+        return bool(self.client and self.client.is_connected and self._authenticated)
+
     def setup(self) -> None:
         """Set up the scanner when needed."""
         self.scanner = bluetooth.async_get_scanner(self.hass)

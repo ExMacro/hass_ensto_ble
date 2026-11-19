@@ -1,11 +1,14 @@
 """Base entity for Ensto BLE integration."""
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 
 if TYPE_CHECKING:
@@ -75,3 +78,74 @@ class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEnt
     async def _async_refresh(self) -> None:
         """Read the characteristic again after a write, so the state shows the device."""
         await self.coordinator.async_refresh_key(self._data_key)
+
+    # Actions use the helpers below, so all error messages are built in one place
+
+    def _check_connected(self) -> None:
+        """Check that the thermostat is connected before an action.
+
+        Raises:
+            HomeAssistantError: The thermostat is not connected.
+        """
+        if not self._manager.is_connected:
+            device = self._manager.device_name or self._manager.mac_address
+            raise HomeAssistantError(
+                f"Could not change {self.name}: {device} is not connected"
+            )
+
+    async def _read_current(
+        self, read: Callable[[], Awaitable[dict[str, Any] | None]]
+    ) -> dict[str, Any]:
+        """Read the current settings from the thermostat.
+
+        Actions that change one value of a characteristic read the others first,
+        because the coordinator data can be up to 30 s old.
+
+        Args:
+            read: Manager read function, e.g. manager.read_boost.
+
+        Returns:
+            The settings read from the thermostat.
+
+        Raises:
+            HomeAssistantError: The read failed.
+        """
+        value = await read()
+        if value is None:
+            device = self._manager.device_name or self._manager.mac_address
+            raise HomeAssistantError(
+                f"Could not read the current {self.name} from {device}"
+            )
+        return value
+
+    async def _write(self, write: Awaitable[bool]) -> None:
+        """Write to the thermostat, then read the value back.
+
+        Args:
+            write: Manager write call, e.g. manager.write_boost(...).
+
+        Raises:
+            HomeAssistantError: The write failed.
+        """
+        if not await write:
+            device = self._manager.device_name or self._manager.mac_address
+            raise HomeAssistantError(f"Could not write {self.name} to {device}")
+        await self._async_refresh()
+
+    def _check_vacation_not_ended(self, vacation: dict[str, Any]) -> None:
+        """Check that the stored vacation period has not ended.
+
+        The thermostat ignores vacation changes when the period has ended,
+        so new dates must be set first.
+
+        Args:
+            vacation: Vacation settings from manager.read_vacation_time().
+
+        Raises:
+            ServiceValidationError: The vacation period has ended.
+        """
+        if vacation['time_to'] <= dt_util.utcnow():
+            end = dt_util.as_local(vacation['time_to']).strftime("%Y-%m-%d %H:%M")
+            raise ServiceValidationError(
+                f"Vacation period ended on {end}, set new vacation dates first"
+            )
