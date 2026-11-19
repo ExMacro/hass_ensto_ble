@@ -103,10 +103,6 @@ class EnstoThermostatManager:
         """Set up the scanner when needed."""
         self.scanner = bluetooth.async_get_scanner(self.hass)
 
-    async def initialize(self) -> None:
-        """Initialize the connection."""
-        await self.connect()
-
     async def cleanup(self) -> None:
         """Clean up the connection."""
         await self._disconnect_stale_client()
@@ -543,20 +539,6 @@ class EnstoThermostatManager:
         except UnicodeDecodeError as e:
             _LOGGER.error("Failed to read model number: %s", e)
             return None
-
-    async def set_heating_mode(self, mode: int) -> None:
-        """Set heating mode."""
-        try:
-            await self.write_heating_mode(mode)
-        except Exception as e:
-            _LOGGER.error("Failed to set heating mode: %s", e)
-
-    async def set_adaptive_temp_control(self, enabled: bool) -> None:
-        """Set adaptive temperature control."""
-        try:
-            await self.write_adaptive_temp_control(enabled)
-        except Exception as e:
-            _LOGGER.error("Failed to set adaptive temperature control: %s", e)
 
     async def read_boost(self) -> dict:
         """Read boost configuration from device."""
