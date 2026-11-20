@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -13,6 +14,11 @@ from .const import DOMAIN
 
 if TYPE_CHECKING:
     from .coordinator import EnstoCoordinator
+
+
+def _local_time(value: datetime) -> str:
+    """Return a UTC datetime as local time for error messages, e.g. 2026-11-20 08:05."""
+    return dt_util.as_local(value).strftime("%Y-%m-%d %H:%M")
 
 class EnstoBaseEntity(Entity):
     """Base entity class for Ensto BLE."""
@@ -145,9 +151,31 @@ class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEnt
             ServiceValidationError: The vacation period has ended.
         """
         if vacation['time_to'] <= dt_util.utcnow():
-            end = dt_util.as_local(vacation['time_to']).strftime("%Y-%m-%d %H:%M")
             raise ServiceValidationError(
-                f"Vacation period ended on {end}, set new vacation dates first"
+                f"Vacation period ended on {_local_time(vacation['time_to'])}, "
+                "set new vacation dates first"
+            )
+
+    def _check_vacation_dates(self, time_from: datetime, time_to: datetime) -> None:
+        """Check new vacation dates before they are written.
+
+        The thermostat ignores a vacation that ends in the past.
+
+        Args:
+            time_from: Vacation start (UTC).
+            time_to: Vacation end (UTC).
+
+        Raises:
+            ServiceValidationError: The end is in the past or not after the start.
+        """
+        if time_to <= dt_util.utcnow():
+            raise ServiceValidationError(
+                f"Vacation end ({_local_time(time_to)}) must be in the future"
+            )
+        if time_to <= time_from:
+            raise ServiceValidationError(
+                f"Vacation end ({_local_time(time_to)}) must be after "
+                f"vacation start ({_local_time(time_from)})"
             )
 
     def _check_floor_limits(self, low: float, high: float) -> None:
