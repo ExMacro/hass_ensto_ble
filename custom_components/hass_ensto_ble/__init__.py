@@ -76,9 +76,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
         # Store the manager instance in runtime_data
         entry.runtime_data = manager
 
-        # Read device information
+        # Read device information. The firmware version decides which entities
+        # are created, so retry setup until both versions can be read.
         manager.sw_version = await manager.read_software_revision()
         manager.hw_version = await manager.read_hardware_revision()
+        if manager.sw_version is None or manager.hw_version is None:
+            raise ConfigEntryNotReady("Could not read the firmware and hardware version")
 
         # Sensors are created from the first real-time data, so retry setup until it can be read
         manager.coordinator = EnstoCoordinator(hass, manager)

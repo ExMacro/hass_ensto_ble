@@ -176,8 +176,13 @@ class EnstoThermostatManager:
                 await self.write_factory_reset_id(stored_id)
                 self._authenticated = True
 
-                # Read and store model number and device name after successful connection
-                self.model_number = await self.read_model_number()
+                # Read and store model number and device name after successful connection.
+                # Entities depend on the model, so a failed read fails the connection
+                # instead of replacing a known model with None.
+                model_number = await self.read_model_number()
+                if model_number is None:
+                    raise Exception("Could not read model number")
+                self.model_number = model_number
                 self.device_name = await self.read_device_name()
                 
                 _LOGGER.info("Successfully verified Factory Reset ID and read model number")
