@@ -8,6 +8,7 @@ from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
+from .exceptions import EnstoBleError, EnstoNotConnectedError, error_cause
 from .storage_manager import EnstoStorageManager
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -257,29 +258,34 @@ class EnstoThermostatManager:
             True on success, False on any failure.
         """
         async with self._gatt_lock:
-            return await self._ble_write_unlocked(uuid, data, label)
+            try:
+                await self._ble_write_unlocked(uuid, data, label)
+            except EnstoBleError as e:
+                # Until the write_* functions raise, they get False
+                _LOGGER.error("%s", e)
+                return False
+            return True
 
-    async def _ble_write_unlocked(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
-        """Internal unlocked implementation of single GATT write."""
+    async def _ble_write_unlocked(self, uuid: str, data: bytes | bytearray, label: str = "") -> None:
+        """Internal unlocked implementation of single GATT write.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The write failed; the connection is dropped.
+        """
         name = label or uuid
         client = self.client
 
         if not client or not client.is_connected or not self._authenticated:
-            _LOGGER.error("Device not connected, cannot write %s.", name)
-            return False
+            raise EnstoNotConnectedError(f"Could not write {name}: not connected")
 
         try:
             await client.write_gatt_char(uuid, data, response=True)
-            return True
-        except BleakError as e:
-            _LOGGER.error("BLE error writing %s: %s", name, e)
-            self._drop_client(client)
-            return False
         except Exception as e:
-            _LOGGER.error("Failed to write %s: %s", name, e)
-            # e.g. a proxy timeout; the connection is unusable
+            # e.g. a BleakError or a proxy timeout; the connection is unusable
+            _LOGGER.debug("Writing %s failed: %r", name, e)
             self._drop_client(client)
-            return False
+            raise EnstoBleError(f"Could not write {name}: {error_cause(e)}") from e
 
     def _drop_client(self, client: BleakClient) -> None:
         """Forget a failed connection, unless a newer one has already replaced it.
@@ -411,9 +417,15 @@ class EnstoThermostatManager:
     async def _ble_write_split(self, uuid: str, data: bytes, label: str = "") -> bool:
         """Write a split-packet characteristic as two packets."""
         async with self._gatt_lock:
-            return await self._ble_write_split_unlocked(uuid, data, label)
+            try:
+                await self._ble_write_split_unlocked(uuid, data, label)
+            except EnstoBleError as e:
+                # Until the write_* functions raise, they get False
+                _LOGGER.error("%s", e)
+                return False
+            return True
 
-    async def _ble_write_split_unlocked(self, uuid: str, data: bytes, label: str = "") -> bool:
+    async def _ble_write_split_unlocked(self, uuid: str, data: bytes, label: str = "") -> None:
         """Internal unlocked implementation of split write.
 
         The payload is always split into two halves. The first packet has
@@ -427,8 +439,9 @@ class EnstoThermostatManager:
             label: Human-readable name for log messages, e.g. "calendar day".
                    Falls back to the UUID string when omitted.
 
-        Returns:
-            True on success, False on any failure.
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: A packet write failed; the connection is dropped.
         """
         name = label or uuid
         chunk_size = (len(data) + 1) // 2
@@ -438,13 +451,10 @@ class EnstoThermostatManager:
             packet = bytearray([header]) + chunk
             _LOGGER.debug("Writing %s packet %d/%d: %s", name, index, len(chunks), packet.hex())
 
-            if not await self._ble_write_unlocked(uuid, packet, label):
-                return False
+            await self._ble_write_unlocked(uuid, packet, label)
 
             # Small delay between packets
             await asyncio.sleep(0.1)
-
-        return True
 
     def parse_real_time_indication(self, data: bytes) -> dict:
         """
