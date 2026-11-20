@@ -149,3 +149,21 @@ class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEnt
             raise ServiceValidationError(
                 f"Vacation period ended on {end}, set new vacation dates first"
             )
+
+    def _check_floor_limits(self, low: float, high: float) -> None:
+        """Check that the floor temperature limits are at least 8 °C apart.
+
+        The thermostat ignores limits that are closer to each other.
+
+        Args:
+            low: Floor temperature min in °C.
+            high: Floor temperature max in °C.
+
+        Raises:
+            ServiceValidationError: The limits are less than 8 °C apart.
+        """
+        if high - low < 8:
+            raise ServiceValidationError(
+                "Floor temperature min must be at least 8 °C below max "
+                f"(min {low:g} °C, max {high:g} °C)"
+            )
