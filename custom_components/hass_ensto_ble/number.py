@@ -53,15 +53,19 @@ async def async_setup_entry(
         EnstoBoostDurationNumber(coordinator),
         EnstoBoostOffsetNumber(coordinator),
         EnstoBoostPowerOffsetNumber(coordinator),
-        EnstoRoomSensorCalibrationNumber(coordinator),
         EnstoHeatingPowerNumber(coordinator),
         EnstoEnergyUnitPriceNumber(coordinator, currency),
         EnstoVacationTempOffsetNumber(coordinator),
         EnstoVacationPowerOffsetNumber(coordinator),
     ]
 
-    # Add floor limit numbers only for ECO16 models
     model = manager.model_number if manager.model_number else ""
+
+    # ECO10 is a floor thermostat without a room sensor
+    if "ECO10" not in model:
+        entities.append(EnstoRoomSensorCalibrationNumber(coordinator))
+
+    # Add floor limit numbers only for ECO16 models
     if "ECO16" in model:
         entities.extend([
             EnstoFloorLimitNumber(coordinator, "low"),

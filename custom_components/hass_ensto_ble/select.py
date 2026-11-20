@@ -9,7 +9,8 @@ from homeassistant.helpers import device_registry as dr
 
 from .base_entity import EnstoCoordinatorEntity
 from .const import (
-    FLOOR_SENSOR_CONFIG, MODE_MAP, SUPPORTED_MODES_ECO16, SUPPORTED_MODES_ELTE6,
+    FLOOR_SENSOR_CONFIG, MODE_MAP, SUPPORTED_MODES_ECO10, SUPPORTED_MODES_ECO16,
+    SUPPORTED_MODES_ELTE6,
     EXTERNAL_CONTROL_MODES,
 )
 from .coordinator import FLOOR_SENSOR, FORCE_CONTROL, HEATING_MODE
@@ -51,8 +52,8 @@ class EnstoHeatingModeSelect(EnstoCoordinatorEntity, SelectEntity):
     """Representation of Ensto Heating Mode select.
 
     Allows selection of heating modes:
-    - Floor: Floor sensor based heating (ECO16 only)
-    - Room: Room sensor based heating
+    - Floor: Floor sensor based heating (ECO16 and ECO10)
+    - Room: Room sensor based heating (not ECO10)
     - Combination: Combined floor and room sensors (ECO16 only)
     - Power: Direct power control
     - Force Control: Manual control mode
@@ -66,10 +67,13 @@ class EnstoHeatingModeSelect(EnstoCoordinatorEntity, SelectEntity):
         self._attr_name = "Heating mode"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_heating_mode_select"
 
-        # ELTE6 has no floor sensor, so "Floor" and "Combination" are excluded
+        # ELTE6 has no floor sensor, so "Floor" and "Combination" are excluded.
+        # ECO10 has no room sensor, so "Room" and "Combination" are excluded.
         model = self._manager.model_number if self._manager.model_number else ""
         if "ELTE6" in model:
             allowed_numbers = SUPPORTED_MODES_ELTE6
+        elif "ECO10" in model:
+            allowed_numbers = SUPPORTED_MODES_ECO10
         else:
             allowed_numbers = SUPPORTED_MODES_ECO16
         self._attr_options = [MODE_MAP[num] for num in sorted(allowed_numbers)]

@@ -80,7 +80,6 @@ async def async_setup_entry(
 
     # The coordinator already holds the first data, so these need no update before adding
     coordinator_sensors = [
-        EnstoTemperatureSensor(coordinator, "room"),
         EnstoTemperatureSensor(coordinator, "target"),
         EnstoStateSensor(coordinator, "relay"),
         EnstoStateSensor(coordinator, "boost"),
@@ -93,6 +92,10 @@ async def async_setup_entry(
         EnstoDateTimeSensor(coordinator),
         EnstoPowerConsumptionSensor(coordinator),
     ]
+
+    # ECO10 is a floor thermostat without a room sensor
+    if "ECO10" not in (manager.model_number or ""):
+        coordinator_sensors.append(EnstoTemperatureSensor(coordinator, "room"))
 
     # Add floor sensor only if value exists and is non-zero
     if coordinator.data[REAL_TIME].get("floor_temperature", 0) != 0:
