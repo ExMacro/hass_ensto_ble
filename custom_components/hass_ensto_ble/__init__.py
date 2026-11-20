@@ -79,8 +79,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
 
         # Read device information. The firmware version decides which entities
         # are created, so retry setup until both versions can be read.
-        manager.sw_version = await manager.read_software_revision()
-        manager.hw_version = await manager.read_hardware_revision()
+        try:
+            manager.sw_version = await manager.read_software_revision()
+            manager.hw_version = await manager.read_hardware_revision()
+        except EnstoBleError as err:
+            # Only ConfigEntryNotReady makes Home Assistant retry the setup
+            raise ConfigEntryNotReady(str(err)) from err
         if manager.sw_version is None or manager.hw_version is None:
             raise ConfigEntryNotReady("Could not read the firmware and hardware version")
 

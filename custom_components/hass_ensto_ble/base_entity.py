@@ -115,11 +115,23 @@ class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEnt
             The settings read from the thermostat.
 
         Raises:
-            HomeAssistantError: The read failed.
+            HomeAssistantError: The read failed, with the cause in the message.
         """
-        value = await read()
+        device = self._manager.device_name or self._manager.mac_address
+        try:
+            value = await read()
+        except EnstoNotConnectedError as err:
+            # The connection dropped after _check_connected()
+            raise HomeAssistantError(
+                f"Could not change {self.name}: {device} is not connected"
+            ) from err
+        except EnstoBleError as err:
+            raise HomeAssistantError(
+                f"Could not read the current {self.name} from {device}: "
+                f"{error_cause(err.__cause__ or err)}"
+            ) from err
         if value is None:
-            device = self._manager.device_name or self._manager.mac_address
+            # The device returned invalid data
             raise HomeAssistantError(
                 f"Could not read the current {self.name} from {device}"
             )

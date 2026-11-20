@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
+from .exceptions import EnstoBleError
 
 if TYPE_CHECKING:
     from .ensto_thermostat_manager import EnstoThermostatManager
@@ -130,9 +131,12 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 await asyncio.sleep(wait)
 
-        raw_data = await manager._ble_read_split(
-            REAL_TIME_INDICATION_UUID, "real-time indication"
-        )
+        try:
+            raw_data = await manager._ble_read_split(
+                REAL_TIME_INDICATION_UUID, "real-time indication"
+            )
+        except EnstoBleError as err:
+            raise UpdateFailed(str(err)) from err
         if not raw_data:
             raise UpdateFailed("Could not read real-time data")
 
@@ -159,8 +163,16 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             keys.discard(MONITORING)
 
         for key in keys:
-            value = await self._read(key)
-            # Keep the previous value if one characteristic fails
+            try:
+                value = await self._read(key)
+            except EnstoBleError as err:
+                # A failed read drops the connection, so the remaining reads would
+                # fail too. Keep the previous values; the next update reconnects.
+                _LOGGER.debug(
+                    "Stopping update of %s: %s", manager.mac_address, err
+                )
+                break
+            # Keep the previous value if the device returned invalid data
             if value is None:
                 continue
             if key == DATE_TIME and device_utc(value) is None:
@@ -196,16 +208,35 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
     async def _read(self, key: str) -> Any:
-        """Read one characteristic, None on failure."""
+        """Read one characteristic.
+
+        Args:
+            key: Data key of the characteristic, e.g. BOOST.
+
+        Returns:
+            The value, or None if the device returned invalid data.
+
+        Raises:
+            EnstoBleError: The read failed.
+        """
         try:
             return await self._readers[key]()
+        except EnstoBleError:
+            raise
         except Exception as err:
             _LOGGER.debug("Failed to read %s from %s: %s", key, self.manager.mac_address, err)
             return None
 
     async def async_refresh_key(self, key: str) -> None:
-        """Read one characteristic again, e.g. after an entity wrote it."""
-        value = await self._read(key)
+        """Read one characteristic again, e.g. after an entity wrote it.
+
+        A failed read keeps the previous value; the next update reads it again.
+        """
+        try:
+            value = await self._read(key)
+        except EnstoBleError as err:
+            _LOGGER.debug("Failed to read %s again from %s: %s", key, self.manager.mac_address, err)
+            return
         if value is not None and self.data is not None:
             self.data[key] = value
             self.async_update_listeners()

@@ -4,7 +4,6 @@ import asyncio
 import time
 from typing import Optional
 from bleak import BleakClient
-from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -217,31 +216,35 @@ class EnstoThermostatManager:
                    Falls back to the UUID string when omitted.
 
         Returns:
-            Raw bytes from the characteristic, or None on any failure.
+            Raw bytes from the characteristic.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The read failed.
         """
         async with self._gatt_lock:
             return await self._ble_read_unlocked(uuid, label)
 
-    async def _ble_read_unlocked(self, uuid: str, label: str = "") -> Optional[bytes]:
-        """Internal unlocked implementation of single GATT read."""
+    async def _ble_read_unlocked(self, uuid: str, label: str = "") -> bytes:
+        """Internal unlocked implementation of single GATT read.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The read failed; the connection is dropped.
+        """
         name = label or uuid
         client = self.client
 
         if not client or not client.is_connected or not self._authenticated:
-            _LOGGER.error("Device not connected, cannot read %s.", name)
-            return None
+            raise EnstoNotConnectedError(f"Could not read {name}: not connected")
 
         try:
             return await client.read_gatt_char(uuid)
-        except BleakError as e:
-            _LOGGER.error("BLE error reading %s: %s", name, e)
-            self._drop_client(client)
-            return None
         except Exception as e:
-            _LOGGER.error("Failed to read %s: %s", name, e)
-            # e.g. a proxy timeout; the connection is unusable
+            # e.g. a BleakError or a proxy timeout; the connection is unusable
+            _LOGGER.debug("Reading %s failed: %r", name, e)
             self._drop_client(client)
-            return None
+            raise EnstoBleError(f"Could not read {name}: {error_cause(e)}") from e
 
     async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> None:
         """Write a single GATT characteristic with response=True under the GATT lock.
@@ -386,14 +389,17 @@ class EnstoThermostatManager:
                    Falls back to the UUID string when omitted.
 
         Returns:
-            Combined payload without trailing zero padding, or None on any failure.
+            Combined payload without trailing zero padding, or None if the
+            device sends too many packets.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: A packet read failed; the connection is dropped.
         """
         combined = bytearray()
 
         for _ in range(MAX_SPLIT_PACKETS):
             packet = await self._ble_read_unlocked(uuid, label)
-            if packet is None:
-                return None
             if not packet:
                 break
 
@@ -1296,6 +1302,8 @@ class EnstoThermostatManager:
                 'measurements': measurements
             }
 
+        except EnstoBleError:
+            raise
         except Exception as e:
             _LOGGER.error("Error reading power consumption: %s", e)
             return None
@@ -1432,6 +1440,8 @@ class EnstoThermostatManager:
 
             return result
 
+        except EnstoBleError:
+            raise
         except Exception as e:
             _LOGGER.error("Error reading monitoring data: %s", e)
             return None
