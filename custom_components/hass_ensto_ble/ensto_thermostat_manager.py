@@ -181,7 +181,7 @@ class EnstoThermostatManager:
                 # instead of replacing a known model with None.
                 model_number = await self.read_model_number()
                 if model_number is None:
-                    raise Exception("Could not read model number")
+                    raise EnstoBleError("Invalid model number from the device")
                 self.model_number = model_number
                 self.device_name = await self.read_device_name()
                 
@@ -683,7 +683,10 @@ class EnstoThermostatManager:
         Read device name via GATT characteristic.
         
         Returns:
-            str - Device name if successful, None if failed or device is unnamed
+            str - Device name, or None if the device is unnamed or the name is invalid
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Device name uses the split protocol (spec 1.1.4, 2.1.2)
         raw_data = await self._ble_read_split(DEVICE_NAME_UUID, "device name")
@@ -715,7 +718,10 @@ class EnstoThermostatManager:
                 hour (int): Hour (0-23)
                 minute (int): Minute (0-59)
                 second (int): Second (0-59)
-            None: If read fails
+            None: If the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Read raw data from device
         data = await self._ble_read(DATE_AND_TIME_UUID, "date and time from device")
@@ -881,7 +887,10 @@ class EnstoThermostatManager:
                 winter_to_summer_offset (int): Offset in minutes for winter->summer transition
                 summer_to_winter_offset (int): Offset in minutes for summer->winter transition
                 timezone_offset (int): Base timezone offset in minutes from UTC
-            None: If read fails
+            None: If the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Read raw data from device
         data = await self._ble_read(DAYLIGHT_SAVING_UUID, "daylight saving config")
@@ -961,7 +970,10 @@ class EnstoThermostatManager:
             dict with keys:
                 low_value: Min floor temp in °C (range 5-42)
                 high_value: Max floor temp in °C (range 13-50)
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         data = await self._ble_read(FLOOR_LIMITS_UUID, "floor limits")
         if not data or len(data) != 4:
@@ -1023,7 +1035,10 @@ class EnstoThermostatManager:
                 sensor_broken_limit (int): ADC limit for broken sensor
                 resistance_25c (int): Sensor resistance at 25 °C in ohms
                 offset (float): Sensor offset in °C
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         data = await self._ble_read(FLOOR_SENSOR_TYPE_UUID, "floor sensor config")
         if not data:
@@ -1316,7 +1331,10 @@ class EnstoThermostatManager:
                 - daily_power: List of last 7 days power consumption data
                 - monthly_power: List of last 12 months power consumption data
                 - temperature_history: List of hourly temperature readings for past week
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         try:
             data = await self._ble_read_split(MONITORING_DATA_UUID, "monitoring data")
@@ -1580,7 +1598,10 @@ class EnstoThermostatManager:
         """Read calendar mode setting from device.
         
         Returns:
-            dict with key 'enabled' (bool) or None if failed
+            dict with key 'enabled' (bool), or None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Read single byte from device
         data = await self._ble_read(CALENDAR_MODE_UUID, "calendar mode")
@@ -1616,7 +1637,11 @@ class EnstoThermostatManager:
             day: Day number (1=Monday, 7=Sunday)
             
         Returns:
-            dict with 'day' and 'programs' list, or None if failed
+            dict with 'day' and 'programs' list, or None if the day or the
+            data from the device is invalid
+
+        Raises:
+            EnstoBleError: The read or the control write failed.
         """
         if not (1 <= day <= 7):
             _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
@@ -1734,7 +1759,10 @@ class EnstoThermostatManager:
                 temperature (float): Absolute temperature for mode 5 (5-35°C)
                 temperature_offset (float): Temperature offset for mode 6 (-20 to +20°C)
                 data_length (int): Length of data received from device
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
 
         Note:
             Mode values:
@@ -1810,15 +1838,15 @@ class EnstoThermostatManager:
             temperature_offset: Temperature offset for mode 6 (-20.0 to +20.0°C)
 
         Raises:
-            EnstoBleError: The current settings could not be read, the firmware
-                does not support external control, or the write failed.
+            EnstoBleError: The current settings could not be read or were invalid,
+                the firmware does not support external control, or the write failed.
         """
         device_name = self.device_name or "Unknown Device"
 
         # Read current values to preserve unchanged settings
         current = await self._ble_read(FORCE_CONTROL_UUID, "force control")
         if not current:
-            raise EnstoBleError("Could not read force control")
+            raise EnstoBleError("Invalid force control data from the device")
 
         # Old firmware has a 1-byte format without external control
         if len(current) < 19:
