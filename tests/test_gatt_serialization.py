@@ -44,8 +44,8 @@ async def test_single_write_acquires_lock(
     manager, mock_client = manager_with_mock_client
     mock_client.write_gatt_char.return_value = None
     assert not manager._gatt_lock.locked()
-    success = await manager._ble_write("dummy-uuid", b"\x01", "test")
-    assert success is True
+    await manager._ble_write("dummy-uuid", b"\x01", "test")
+    mock_client.write_gatt_char.assert_awaited_once()
     assert not manager._gatt_lock.locked()
 
 
@@ -73,11 +73,10 @@ async def test_split_write_does_not_deadlock(
     """Test that split write completes under GATT lock without deadlocking."""
     manager, mock_client = manager_with_mock_client
     payload = b"12345678"
-    success = await asyncio.wait_for(
+    await asyncio.wait_for(
         manager._ble_write_split("dummy-uuid", payload, "split write test"),
         timeout=2.0,
     )
-    assert success is True
     assert mock_client.write_gatt_char.call_count == 2
     assert not manager._gatt_lock.locked()
 

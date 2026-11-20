@@ -11,6 +11,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 from .const import DOMAIN
+from .exceptions import EnstoBleError, EnstoNotConnectedError, error_cause
 
 if TYPE_CHECKING:
     from .coordinator import EnstoCoordinator
@@ -124,18 +125,27 @@ class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEnt
             )
         return value
 
-    async def _write(self, write: Awaitable[bool]) -> None:
+    async def _write(self, write: Awaitable[None]) -> None:
         """Write to the thermostat, then read the value back.
 
         Args:
             write: Manager write call, e.g. manager.write_boost(...).
 
         Raises:
-            HomeAssistantError: The write failed.
+            HomeAssistantError: The write failed, with the cause in the message.
         """
-        if not await write:
-            device = self._manager.device_name or self._manager.mac_address
-            raise HomeAssistantError(f"Could not write {self.name} to {device}")
+        device = self._manager.device_name or self._manager.mac_address
+        try:
+            await write
+        except EnstoNotConnectedError as err:
+            # The connection dropped after _check_connected()
+            raise HomeAssistantError(
+                f"Could not change {self.name}: {device} is not connected"
+            ) from err
+        except EnstoBleError as err:
+            raise HomeAssistantError(
+                f"Could not write {self.name} to {device}: {error_cause(err.__cause__ or err)}"
+            ) from err
         await self._async_refresh()
 
     def _check_vacation_not_ended(self, vacation: dict[str, Any]) -> None:

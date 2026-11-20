@@ -84,9 +84,7 @@ class EnstoVacationDateTimeEntity(EnstoCoordinatorEntity, DateTimeEntity):
             enabled=current.get('enabled', False)
         ))
 
-    async def _write_and_wait(self, **settings) -> bool:
+    async def _write_and_wait(self, **settings) -> None:
         """Write the vacation settings and wait for the device to process them."""
-        if not await self._manager.write_vacation_time(**settings):
-            return False
+        await self._manager.write_vacation_time(**settings)
         await sleep(0.5)
-        return True

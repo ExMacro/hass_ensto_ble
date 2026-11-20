@@ -17,6 +17,7 @@ from .const import (
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 from .coordinator import EnstoCoordinator
 from .ensto_thermostat_manager import EnstoThermostatManager
+from .exceptions import EnstoBleError, error_cause
 from .storage_manager import EnstoStorageManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,9 +100,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
             if current is None:
                 _LOGGER.warning("Could not read energy unit, device currency not initialized")
             elif current['currency_code'] != config_currency:
-                success = await manager.write_energy_unit(config_currency, current['price'])
-                if not success:
-                    _LOGGER.warning("Failed to set device currency")
+                await manager.write_energy_unit(config_currency, current['price'])
 
         except Exception as e:
             _LOGGER.warning("Failed to initialize device currency: %s", e)
@@ -134,7 +133,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                         manager = config_entry.runtime_data
 
                         # Read calendar day
-                        result = await manager.read_calendar_day(day)
+                        try:
+                            result = await manager.read_calendar_day(day)
+                        except EnstoBleError as err:
+                            raise HomeAssistantError(
+                                f"Could not read calendar day from {manager.device_name or manager.mac_address}: "
+                                f"{error_cause(err.__cause__ or err)}"
+                            ) from err
 
                         if result:
                             enabled_programs = [p for p in result['programs'] if p['enabled']]
@@ -173,15 +178,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                         manager = config_entry.runtime_data
 
                         # Write calendar day
-                        success = await manager.write_calendar_day(day, programs)
+                        try:
+                            await manager.write_calendar_day(day, programs)
+                        except EnstoBleError as err:
+                            raise HomeAssistantError(
+                                f"Could not write calendar day to {manager.device_name or manager.mac_address}: "
+                                f"{error_cause(err.__cause__ or err)}"
+                            ) from err
 
-                        if success:
-                            enabled_programs = [p for p in programs if p['enabled']]
-                            programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
-                            _LOGGER.info("Action [Set Calendar Day %d] for [%s] (%s): %d programs saved [%s]",
-                                    day, manager.device_name or "Unknown Device", manager.mac_address, len(enabled_programs), programs_str)
-                        else:
-                            raise HomeAssistantError(f"Could not write calendar day to {manager.device_name or manager.mac_address}")
+                        enabled_programs = [p for p in programs if p['enabled']]
+                        programs_str = ", ".join([f"{p['start_hour']:02d}:{p['start_minute']:02d}-{p['end_hour']:02d}:{p['end_minute']:02d} {p['temp_offset']:+.1f}°C" for p in enabled_programs])
+                        _LOGGER.info("Action [Set Calendar Day %d] for [%s] (%s): %d programs saved [%s]",
+                                day, manager.device_name or "Unknown Device", manager.mac_address, len(enabled_programs), programs_str)
 
         # Only register services if they don't already exist
         if not hass.services.has_service(DOMAIN, SERVICE_GET_CALENDAR_DAY):
