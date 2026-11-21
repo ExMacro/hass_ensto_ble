@@ -205,7 +205,7 @@ class EnstoThermostatManager:
         if not self.client or not self.client.is_connected:
             await self.connect()
 
-    async def _ble_read(self, uuid: str, label: str = "") -> Optional[bytes]:
+    async def _ble_read(self, uuid: str, label: str = "") -> bytes:
         """Read a single GATT characteristic under the GATT lock.
 
         Not suitable for split-packet characteristics; use _ble_read_split() for those.

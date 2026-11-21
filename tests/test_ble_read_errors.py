@@ -1,13 +1,16 @@
 """Unit tests for errors raised by the GATT read primitives and their handling."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak.exc import BleakError
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from custom_components.hass_ensto_ble.base_entity import EnstoCoordinatorEntity
 from custom_components.hass_ensto_ble.coordinator import (
     BOOST,
     REAL_TIME,
@@ -141,6 +144,59 @@ async def test_coordinator_keeps_previous_values(
     assert data[BOOST] == {"enabled": True}
     assert data[VACATION] == {"enabled": False}
     assert data[REAL_TIME] == {"target_temperature": 21.0}
+
+
+def _entity(name: str, device_name: str) -> SimpleNamespace:
+    """Return a stand-in for an entity, with what the action helpers use."""
+    return SimpleNamespace(
+        name=name,
+        _manager=SimpleNamespace(device_name=device_name, mac_address="AA:BB:CC:DD:EE:FF"),
+    )
+
+
+async def test_read_current_returns_value() -> None:
+    """Test that an action gets the current settings from the read function."""
+    read = AsyncMock(return_value={"enabled": True})
+
+    value = await EnstoCoordinatorEntity._read_current(_entity("Boost mode", "First"), read)
+
+    assert value == {"enabled": True}
+
+
+async def test_read_current_error_shows_cause() -> None:
+    """Test that a failed read before an action shows the cause."""
+    read = AsyncMock(
+        side_effect=EnstoBleError("Could not read boost config: TimeoutError")
+    )
+    read.side_effect.__cause__ = TimeoutError()
+
+    with pytest.raises(
+        HomeAssistantError,
+        match="^Could not read the current Boost mode from First: TimeoutError$",
+    ):
+        await EnstoCoordinatorEntity._read_current(_entity("Boost mode", "First"), read)
+
+
+async def test_read_current_not_connected() -> None:
+    """Test that a dropped connection before an action shows as not connected."""
+    read = AsyncMock(
+        side_effect=EnstoNotConnectedError("Could not read boost config: not connected")
+    )
+
+    with pytest.raises(
+        HomeAssistantError, match="^Could not change Boost mode: First is not connected$"
+    ):
+        await EnstoCoordinatorEntity._read_current(_entity("Boost mode", "First"), read)
+
+
+async def test_read_current_invalid_data() -> None:
+    """Test that invalid data from the device stops the action."""
+    read = AsyncMock(return_value=None)
+
+    with pytest.raises(
+        HomeAssistantError, match="^Could not read the current Boost mode from First$"
+    ):
+        await EnstoCoordinatorEntity._read_current(_entity("Boost mode", "First"), read)
 
 
 async def test_refresh_key_keeps_value_on_failure(

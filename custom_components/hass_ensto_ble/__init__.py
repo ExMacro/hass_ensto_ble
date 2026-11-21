@@ -17,7 +17,7 @@ from .const import (
 from .config_flow import CONF_CURRENCY, DEFAULT_CURRENCY
 from .coordinator import EnstoCoordinator
 from .ensto_thermostat_manager import EnstoThermostatManager
-from .exceptions import EnstoBleError, error_cause
+from .exceptions import EnstoBleError, EnstoNotConnectedError, error_cause
 from .storage_manager import EnstoStorageManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -139,6 +139,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                         # Read calendar day
                         try:
                             result = await manager.read_calendar_day(day)
+                        except EnstoNotConnectedError as err:
+                            raise HomeAssistantError(
+                                f"Could not read calendar day: {manager.device_name or manager.mac_address} is not connected"
+                            ) from err
                         except EnstoBleError as err:
                             raise HomeAssistantError(
                                 f"Could not read calendar day from {manager.device_name or manager.mac_address}: "
@@ -184,6 +188,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnstoConfigEntry) -> boo
                         # Write calendar day
                         try:
                             await manager.write_calendar_day(day, programs)
+                        except EnstoNotConnectedError as err:
+                            raise HomeAssistantError(
+                                f"Could not write calendar day: {manager.device_name or manager.mac_address} is not connected"
+                            ) from err
                         except EnstoBleError as err:
                             raise HomeAssistantError(
                                 f"Could not write calendar day to {manager.device_name or manager.mac_address}: "
