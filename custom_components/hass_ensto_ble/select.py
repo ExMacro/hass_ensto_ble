@@ -37,9 +37,9 @@ async def async_setup_entry(
     # Always add heating mode select
     selects = [EnstoHeatingModeSelect(coordinator)]
 
-    # Add floor sensor select only for ECO16 models
+    # Add floor sensor select only for models with a floor sensor
     model = manager.model_number if manager.model_number else ""
-    if "ECO16" in model:
+    if "ECO16" in model or "ECO10" in model:
         selects.append(EnstoFloorSensorSelect(coordinator))
 
     # Add external control mode select only for firmware 1.14+
