@@ -54,6 +54,7 @@ MODE_MAP = {
 # Define supported modes per device model using mode numbers for direct lookup
 SUPPORTED_MODES_ECO16 = {1, 2, 3, 4}
 SUPPORTED_MODES_ELTE6 = {2, 4}
+SUPPORTED_MODES_ECO10 = {1, 4}  # Floor thermostat, no room sensor
 
 # Floor sensor types (only the ones in Ensto app) and parameter values (as written to device by Ensto app)
 FLOOR_SENSOR_CONFIG = {
