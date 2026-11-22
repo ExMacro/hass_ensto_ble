@@ -109,14 +109,18 @@ class EnstoAdaptiveTempSwitch(EnstoCoordinatorSwitch):
         await self._write(self._manager.write_adaptive_temp_control(False))
 
 class EnstoDaylightSavingSwitch(EnstoCoordinatorSwitch):
-    """Representation of Ensto Daylight Saving switch."""
+    """Switch for the thermostat's automatic daylight saving transitions.
+
+    When on, the thermostat moves its own local time to summer time and back
+    by the EU rule. It does not tell whether summer time is in effect now.
+    """
 
     _data_key = DAYLIGHT_SAVING
 
     def __init__(self, coordinator):
         """Initialize the switch."""
         super().__init__(coordinator)
-        self._attr_name = "Daylight saving"
+        self._attr_name = "Automatic daylight saving"
         self._attr_unique_id = f"{dr.format_mac(self._manager.mac_address)}_daylight_saving_switch"
 
     @property
