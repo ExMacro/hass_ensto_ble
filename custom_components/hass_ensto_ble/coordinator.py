@@ -88,6 +88,10 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             always_update=False,
         )
         self.manager = manager
+        # One operation at a time: an update reading the device, or an action
+        # writing and reading back. Otherwise an update that read a value before
+        # a write would put the old value back when it finishes.
+        self.lock = asyncio.Lock()
         # Hour of the last successful monitoring data read, None until the first read
         self._history_hour: datetime | None = None
         self._readers: dict[str, Callable[[], Awaitable[Any]]] = {
@@ -133,6 +137,23 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     wait, manager.mac_address,
                 )
                 await asyncio.sleep(wait)
+
+        # Connecting stays outside the lock, so actions don't wait for a long
+        # connection attempt. Home Assistant stores the returned data before an
+        # action waiting for the lock can run, so the action reads back into it.
+        async with self.lock:
+            return await self._read_data()
+
+    async def _read_data(self) -> dict[str, Any]:
+        """Read the real-time data and the characteristics the entities use.
+
+        Returns:
+            The new coordinator data.
+
+        Raises:
+            UpdateFailed: The real-time data could not be read.
+        """
+        manager = self.manager
 
         try:
             raw_data = await manager._ble_read_split(

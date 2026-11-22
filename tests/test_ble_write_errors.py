@@ -1,6 +1,7 @@
 """Unit tests for errors raised by the GATT write primitives."""
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -109,6 +110,7 @@ async def test_entity_write_error_shows_cause() -> None:
         name="Heating mode",
         _manager=SimpleNamespace(device_name="Third", mac_address="AA:BB:CC:DD:EE:FF"),
         _async_refresh=AsyncMock(),
+        coordinator=SimpleNamespace(lock=asyncio.Lock()),
     )
 
     async def failing_write() -> None:
@@ -127,6 +129,7 @@ async def test_entity_write_not_connected() -> None:
         name="Boost mode",
         _manager=SimpleNamespace(device_name="Second", mac_address="AA:BB:CC:DD:EE:FF"),
         _async_refresh=AsyncMock(),
+        coordinator=SimpleNamespace(lock=asyncio.Lock()),
     )
 
     async def failing_write() -> None:
