@@ -105,10 +105,13 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             MONITORING: manager.read_monitoring_data,
         }
         # Only these models and firmware versions have the characteristic
-        if "ECO16" in (manager.model_number or ""):
+        model = manager.model_number or ""
+        if "ECO16" in model or "ECO10" in model:
             self._readers[FLOOR_SENSOR] = manager.read_floor_sensor_config
-            self._readers[FLOOR_LIMITS] = manager.read_floor_limits
             self._readers[FLOOR_AREA] = manager.read_floor_area
+        # Floor limits are used only in the combination mode, which ECO10 does not have
+        if "ECO16" in model:
+            self._readers[FLOOR_LIMITS] = manager.read_floor_limits
         if manager.supports_external_control():
             self._readers[FORCE_CONTROL] = manager.read_force_control
 
