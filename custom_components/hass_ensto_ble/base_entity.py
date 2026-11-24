@@ -1,15 +1,25 @@
 """Base entity for Ensto BLE integration."""
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 from .const import DOMAIN
+from .exceptions import EnstoBleError, EnstoNotConnectedError, error_cause
 
 if TYPE_CHECKING:
     from .coordinator import EnstoCoordinator
+
+
+def _local_time(value: datetime) -> str:
+    """Return a UTC datetime as local time for error messages, e.g. 2026-11-20 08:05."""
+    return dt_util.as_local(value).strftime("%Y-%m-%d %H:%M")
 
 class EnstoBaseEntity(Entity):
     """Base entity class for Ensto BLE."""
@@ -75,3 +85,137 @@ class EnstoCoordinatorEntity(CoordinatorEntity["EnstoCoordinator"], EnstoBaseEnt
     async def _async_refresh(self) -> None:
         """Read the characteristic again after a write, so the state shows the device."""
         await self.coordinator.async_refresh_key(self._data_key)
+
+    # Actions use the helpers below, so all error messages are built in one place
+
+    def _check_connected(self) -> None:
+        """Check that the thermostat is connected before an action.
+
+        Raises:
+            HomeAssistantError: The thermostat is not connected.
+        """
+        if not self._manager.is_connected:
+            device = self._manager.device_name or self._manager.mac_address
+            raise HomeAssistantError(
+                f"Could not change {self.name}: {device} is not connected"
+            )
+
+    async def _read_current(
+        self, read: Callable[[], Awaitable[dict[str, Any] | None]]
+    ) -> dict[str, Any]:
+        """Read the current settings from the thermostat.
+
+        Actions that change one value of a characteristic read the others first,
+        because the coordinator data can be up to 30 s old.
+
+        Args:
+            read: Manager read function, e.g. manager.read_boost.
+
+        Returns:
+            The settings read from the thermostat.
+
+        Raises:
+            HomeAssistantError: The read failed, with the cause in the message.
+        """
+        device = self._manager.device_name or self._manager.mac_address
+        try:
+            value = await read()
+        except EnstoNotConnectedError as err:
+            # The connection dropped after _check_connected()
+            raise HomeAssistantError(
+                f"Could not change {self.name}: {device} is not connected"
+            ) from err
+        except EnstoBleError as err:
+            raise HomeAssistantError(
+                f"Could not read the current {self.name} from {device}: "
+                f"{error_cause(err.__cause__ or err)}"
+            ) from err
+        if value is None:
+            # The device returned invalid data
+            raise HomeAssistantError(
+                f"Could not read the current {self.name} from {device}"
+            )
+        return value
+
+    async def _write(self, write: Awaitable[None]) -> None:
+        """Write to the thermostat, then read the value back.
+
+        Args:
+            write: Manager write call, e.g. manager.write_boost(...).
+
+        Raises:
+            HomeAssistantError: The write failed, with the cause in the message.
+        """
+        device = self._manager.device_name or self._manager.mac_address
+        # Wait for an update in progress, so it can't put the old value back
+        async with self.coordinator.lock:
+            try:
+                await write
+            except EnstoNotConnectedError as err:
+                # The connection dropped after _check_connected()
+                raise HomeAssistantError(
+                    f"Could not change {self.name}: {device} is not connected"
+                ) from err
+            except EnstoBleError as err:
+                raise HomeAssistantError(
+                    f"Could not write {self.name} to {device}: {error_cause(err.__cause__ or err)}"
+                ) from err
+            await self._async_refresh()
+
+    def _check_vacation_not_ended(self, vacation: dict[str, Any]) -> None:
+        """Check that the stored vacation period has not ended.
+
+        The thermostat ignores vacation changes when the period has ended,
+        so new dates must be set first.
+
+        Args:
+            vacation: Vacation settings from manager.read_vacation_time().
+
+        Raises:
+            ServiceValidationError: The vacation period has ended.
+        """
+        if vacation['time_to'] <= dt_util.utcnow():
+            raise ServiceValidationError(
+                f"Vacation period ended on {_local_time(vacation['time_to'])}, "
+                "set new vacation dates first"
+            )
+
+    def _check_vacation_dates(self, time_from: datetime, time_to: datetime) -> None:
+        """Check new vacation dates before they are written.
+
+        The thermostat ignores a vacation that ends in the past.
+
+        Args:
+            time_from: Vacation start (UTC).
+            time_to: Vacation end (UTC).
+
+        Raises:
+            ServiceValidationError: The end is in the past or not after the start.
+        """
+        if time_to <= dt_util.utcnow():
+            raise ServiceValidationError(
+                f"Vacation end ({_local_time(time_to)}) must be in the future"
+            )
+        if time_to <= time_from:
+            raise ServiceValidationError(
+                f"Vacation end ({_local_time(time_to)}) must be after "
+                f"vacation start ({_local_time(time_from)})"
+            )
+
+    def _check_floor_limits(self, low: float, high: float) -> None:
+        """Check that the floor temperature limits are at least 8 °C apart.
+
+        The thermostat ignores limits that are closer to each other.
+
+        Args:
+            low: Floor temperature min in °C.
+            high: Floor temperature max in °C.
+
+        Raises:
+            ServiceValidationError: The limits are less than 8 °C apart.
+        """
+        if high - low < 8:
+            raise ServiceValidationError(
+                "Floor temperature min must be at least 8 °C below max "
+                f"(min {low:g} °C, max {high:g} °C)"
+            )

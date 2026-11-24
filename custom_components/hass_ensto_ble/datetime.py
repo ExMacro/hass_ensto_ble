@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from homeassistant.components.datetime import DateTimeEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
 from asyncio import sleep
@@ -55,55 +54,37 @@ class EnstoVacationDateTimeEntity(EnstoCoordinatorEntity, DateTimeEntity):
         return self._value['time_from' if self._date_type == 'start' else 'time_to']
 
     async def async_set_value(self, value: datetime) -> None:
-        """Update the datetime value and write to device."""
-        try:
-            # Home Assistant handles times internally as UTC, but user sees and inputs local time in the UI.
-            # When the value is passed here, it's already in UTC format but represents the local time entered by the user.
+        """Update the datetime value and write to device.
 
-            # Read fresh settings, the coordinator data can be up to 30 s old
-            current_settings = await self._manager.read_vacation_time()
-            if not current_settings:
-                _LOGGER.error("Failed to read current vacation settings")
-                return
+        The value is in UTC; the user enters it as local time in the UI.
+        """
+        self._check_connected()
+        current = await self._read_current(self._manager.read_vacation_time)
 
-            # Determine which value to update
-            time_from = value if self._date_type == 'start' else current_settings['time_from']
-            time_to = value if self._date_type == 'end' else current_settings['time_to']
+        time_from = value if self._date_type == 'start' else current['time_from']
+        time_to = value if self._date_type == 'end' else current['time_to']
 
-            # Validate that start time is before end time
-            if time_from >= time_to:
-                if self._date_type == 'start':
-                    _LOGGER.warning(
-                        "Vacation end date (%s) is not after new start (%s); "
-                        "automatically advancing end to start + 7 days",
-                        time_to, time_from,
-                    )
-                    time_to = time_from + timedelta(days=7)
-                else:
-                    # Shown to the user; the frontend then shows the device value again
-                    raise ServiceValidationError("Vacation end must be after vacation start")
-
-            # Write values to the device
-            success = await self._manager.write_vacation_time(
-                time_from=time_from,
-                time_to=time_to,
-                offset_temperature=current_settings['offset_temperature'],
-                offset_percentage=current_settings['offset_percentage'],
-                enabled=current_settings.get('enabled', False)
+        # A new start after the end moves the end a week after the start
+        if self._date_type == 'start' and time_from >= time_to:
+            _LOGGER.warning(
+                "Vacation end date (%s) is not after new start (%s); "
+                "automatically advancing end to start + 7 days",
+                time_to, time_from,
             )
+            time_to = time_from + timedelta(days=7)
 
-            if success:
-                # Give the device 500 ms to process the change before reading it back
-                await sleep(0.5)
-            else:
-                _LOGGER.error("Failed to update vacation %s time", self._date_type)
+        self._check_vacation_dates(time_from, time_to)
 
-        except ServiceValidationError:
-            raise
-        except Exception as e:
-            _LOGGER.error("Error updating vacation time: %s", e)
-            await self._async_refresh()
-            raise
+        # Give the device 500 ms to process the change before it is read back
+        await self._write(self._write_and_wait(
+            time_from=time_from,
+            time_to=time_to,
+            offset_temperature=current['offset_temperature'],
+            offset_percentage=current['offset_percentage'],
+            enabled=current.get('enabled', False)
+        ))
 
-        # Read back, so both vacation datetimes show the device values
-        await self._async_refresh()
+    async def _write_and_wait(self, **settings) -> None:
+        """Write the vacation settings and wait for the device to process them."""
+        await self._manager.write_vacation_time(**settings)
+        await sleep(0.5)

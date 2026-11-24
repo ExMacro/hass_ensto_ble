@@ -4,10 +4,10 @@ import asyncio
 import time
 from typing import Optional
 from bleak import BleakClient
-from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
+from .exceptions import EnstoBleError, EnstoNotConnectedError, error_cause
 from .storage_manager import EnstoStorageManager
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -99,13 +99,18 @@ class EnstoThermostatManager:
             _LOGGER.debug("Could not parse firmware version: %s", self.sw_version)
             return False
 
+    @property
+    def is_connected(self) -> bool:
+        """Return True when the connection is open and authenticated.
+
+        Returns:
+            True if reads and writes can be sent to the device.
+        """
+        return bool(self.client and self.client.is_connected and self._authenticated)
+
     def setup(self) -> None:
         """Set up the scanner when needed."""
         self.scanner = bluetooth.async_get_scanner(self.hass)
-
-    async def initialize(self) -> None:
-        """Initialize the connection."""
-        await self.connect()
 
     async def cleanup(self) -> None:
         """Clean up the connection."""
@@ -171,8 +176,13 @@ class EnstoThermostatManager:
                 await self.write_factory_reset_id(stored_id)
                 self._authenticated = True
 
-                # Read and store model number and device name after successful connection
-                self.model_number = await self.read_model_number()
+                # Read and store model number and device name after successful connection.
+                # Entities depend on the model, so a failed read fails the connection
+                # instead of replacing a known model with None.
+                model_number = await self.read_model_number()
+                if model_number is None:
+                    raise EnstoBleError("Invalid model number from the device")
+                self.model_number = model_number
                 self.device_name = await self.read_device_name()
                 
                 _LOGGER.info("Successfully verified Factory Reset ID and read model number")
@@ -195,7 +205,7 @@ class EnstoThermostatManager:
         if not self.client or not self.client.is_connected:
             await self.connect()
 
-    async def _ble_read(self, uuid: str, label: str = "") -> Optional[bytes]:
+    async def _ble_read(self, uuid: str, label: str = "") -> bytes:
         """Read a single GATT characteristic under the GATT lock.
 
         Not suitable for split-packet characteristics; use _ble_read_split() for those.
@@ -206,33 +216,37 @@ class EnstoThermostatManager:
                    Falls back to the UUID string when omitted.
 
         Returns:
-            Raw bytes from the characteristic, or None on any failure.
+            Raw bytes from the characteristic.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The read failed.
         """
         async with self._gatt_lock:
             return await self._ble_read_unlocked(uuid, label)
 
-    async def _ble_read_unlocked(self, uuid: str, label: str = "") -> Optional[bytes]:
-        """Internal unlocked implementation of single GATT read."""
+    async def _ble_read_unlocked(self, uuid: str, label: str = "") -> bytes:
+        """Internal unlocked implementation of single GATT read.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The read failed; the connection is dropped.
+        """
         name = label or uuid
         client = self.client
 
         if not client or not client.is_connected or not self._authenticated:
-            _LOGGER.error("Device not connected, cannot read %s.", name)
-            return None
+            raise EnstoNotConnectedError(f"Could not read {name}: not connected")
 
         try:
             return await client.read_gatt_char(uuid)
-        except BleakError as e:
-            _LOGGER.error("BLE error reading %s: %s", name, e)
-            self._drop_client(client)
-            return None
         except Exception as e:
-            _LOGGER.error("Failed to read %s: %s", name, e)
-            # e.g. a proxy timeout; the connection is unusable
+            # e.g. a BleakError or a proxy timeout; the connection is unusable
+            _LOGGER.debug("Reading %s failed: %r", name, e)
             self._drop_client(client)
-            return None
+            raise EnstoBleError(f"Could not read {name}: {error_cause(e)}") from e
 
-    async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
+    async def _ble_write(self, uuid: str, data: bytes | bytearray, label: str = "") -> None:
         """Write a single GATT characteristic with response=True under the GATT lock.
 
         Not suitable for split-packet characteristics; use _ble_write_split() for those.
@@ -243,33 +257,33 @@ class EnstoThermostatManager:
             label: Human-readable name for log messages, e.g. "boost config".
                    Falls back to the UUID string when omitted.
 
-        Returns:
-            True on success, False on any failure.
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The write failed.
         """
         async with self._gatt_lock:
-            return await self._ble_write_unlocked(uuid, data, label)
+            await self._ble_write_unlocked(uuid, data, label)
 
-    async def _ble_write_unlocked(self, uuid: str, data: bytes | bytearray, label: str = "") -> bool:
-        """Internal unlocked implementation of single GATT write."""
+    async def _ble_write_unlocked(self, uuid: str, data: bytes | bytearray, label: str = "") -> None:
+        """Internal unlocked implementation of single GATT write.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: The write failed; the connection is dropped.
+        """
         name = label or uuid
         client = self.client
 
         if not client or not client.is_connected or not self._authenticated:
-            _LOGGER.error("Device not connected, cannot write %s.", name)
-            return False
+            raise EnstoNotConnectedError(f"Could not write {name}: not connected")
 
         try:
             await client.write_gatt_char(uuid, data, response=True)
-            return True
-        except BleakError as e:
-            _LOGGER.error("BLE error writing %s: %s", name, e)
-            self._drop_client(client)
-            return False
         except Exception as e:
-            _LOGGER.error("Failed to write %s: %s", name, e)
-            # e.g. a proxy timeout; the connection is unusable
+            # e.g. a BleakError or a proxy timeout; the connection is unusable
+            _LOGGER.debug("Writing %s failed: %r", name, e)
             self._drop_client(client)
-            return False
+            raise EnstoBleError(f"Could not write {name}: {error_cause(e)}") from e
 
     def _drop_client(self, client: BleakClient) -> None:
         """Forget a failed connection, unless a newer one has already replaced it.
@@ -375,14 +389,17 @@ class EnstoThermostatManager:
                    Falls back to the UUID string when omitted.
 
         Returns:
-            Combined payload without trailing zero padding, or None on any failure.
+            Combined payload without trailing zero padding, or None if the
+            device sends too many packets.
+
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: A packet read failed; the connection is dropped.
         """
         combined = bytearray()
 
         for _ in range(MAX_SPLIT_PACKETS):
             packet = await self._ble_read_unlocked(uuid, label)
-            if packet is None:
-                return None
             if not packet:
                 break
 
@@ -398,12 +415,12 @@ class EnstoThermostatManager:
         # Remove padding bytes (zeros from the end)
         return bytes(combined).rstrip(b'\x00')
 
-    async def _ble_write_split(self, uuid: str, data: bytes, label: str = "") -> bool:
+    async def _ble_write_split(self, uuid: str, data: bytes, label: str = "") -> None:
         """Write a split-packet characteristic as two packets."""
         async with self._gatt_lock:
-            return await self._ble_write_split_unlocked(uuid, data, label)
+            await self._ble_write_split_unlocked(uuid, data, label)
 
-    async def _ble_write_split_unlocked(self, uuid: str, data: bytes, label: str = "") -> bool:
+    async def _ble_write_split_unlocked(self, uuid: str, data: bytes, label: str = "") -> None:
         """Internal unlocked implementation of split write.
 
         The payload is always split into two halves. The first packet has
@@ -417,8 +434,9 @@ class EnstoThermostatManager:
             label: Human-readable name for log messages, e.g. "calendar day".
                    Falls back to the UUID string when omitted.
 
-        Returns:
-            True on success, False on any failure.
+        Raises:
+            EnstoNotConnectedError: The thermostat is not connected.
+            EnstoBleError: A packet write failed; the connection is dropped.
         """
         name = label or uuid
         chunk_size = (len(data) + 1) // 2
@@ -428,13 +446,10 @@ class EnstoThermostatManager:
             packet = bytearray([header]) + chunk
             _LOGGER.debug("Writing %s packet %d/%d: %s", name, index, len(chunks), packet.hex())
 
-            if not await self._ble_write_unlocked(uuid, packet, label):
-                return False
+            await self._ble_write_unlocked(uuid, packet, label)
 
             # Small delay between packets
             await asyncio.sleep(0.1)
-
-        return True
 
     def parse_real_time_indication(self, data: bytes) -> dict:
         """
@@ -544,20 +559,6 @@ class EnstoThermostatManager:
             _LOGGER.error("Failed to read model number: %s", e)
             return None
 
-    async def set_heating_mode(self, mode: int) -> None:
-        """Set heating mode."""
-        try:
-            await self.write_heating_mode(mode)
-        except Exception as e:
-            _LOGGER.error("Failed to set heating mode: %s", e)
-
-    async def set_adaptive_temp_control(self, enabled: bool) -> None:
-        """Set adaptive temperature control."""
-        try:
-            await self.write_adaptive_temp_control(enabled)
-        except Exception as e:
-            _LOGGER.error("Failed to set adaptive temperature control: %s", e)
-
     async def read_boost(self) -> dict:
         """Read boost configuration from device."""
         # Read raw data from device
@@ -595,18 +596,15 @@ class EnstoThermostatManager:
             'remaining_minutes': remaining_minutes
         }
 
-    async def write_boost(self, enabled: bool, offset_degrees: float, offset_percentage: int, duration_minutes: int) -> bool:
+    async def write_boost(self, enabled: bool, offset_degrees: float, offset_percentage: int, duration_minutes: int) -> None:
         """Write boost configuration to device."""
         # Validate input values
         if not (-20 <= offset_degrees <= 20):
-            _LOGGER.error("Temperature offset must be between -20 and 20 degrees: %s", offset_degrees)
-            return False
+            raise ValueError(f"Temperature offset must be between -20 and 20 degrees: {offset_degrees}")
         if not (-100 <= offset_percentage <= 100):
-            _LOGGER.error("Percentage offset must be between -100 and 100: %s", offset_percentage)
-            return False
+            raise ValueError(f"Percentage offset must be between -100 and 100: {offset_percentage}")
         if not (0 <= duration_minutes <= 65535):  # max value for uint16
-            _LOGGER.error("Duration must be between 0 and 65535 minutes: %s", duration_minutes)
-            return False
+            raise ValueError(f"Duration must be between 0 and 65535 minutes: {duration_minutes}")
 
         # Convert temperature to raw value (multiply by 100)
         # e.g., 21.5 degrees becomes 2150
@@ -630,7 +628,7 @@ class EnstoThermostatManager:
         data[6:8] = (0).to_bytes(2, byteorder='little')
 
         # Write to device
-        return await self._ble_write(BOOST_UUID, data, "boost config")
+        await self._ble_write(BOOST_UUID, data, "boost config")
 
     async def read_heating_mode(self) -> dict:
         """Read heating mode configuration from device."""
@@ -647,20 +645,18 @@ class EnstoThermostatManager:
             'mode_name': mode_name
         }
 
-    async def write_heating_mode(self, mode: int) -> bool:
+    async def write_heating_mode(self, mode: int) -> None:
         """Write heating mode configuration to device."""
         # Validate input mode
         if mode not in MODE_MAP:
-            _LOGGER.error(
-                "Invalid heating mode %s. Must be: "
+            raise ValueError(
+                f"Invalid heating mode {mode}. Must be: "
                 "1 (Floor), 2 (Room), 3 (Combination), "
-                "4 (Power), or 5 (Force Control)",
-                mode
+                "4 (Power), or 5 (Force Control)"
             )
-            return False
 
         # Pack data - just a single byte
-        return await self._ble_write(HEATING_MODE_UUID, bytes([mode]), "heating mode")
+        await self._ble_write(HEATING_MODE_UUID, bytes([mode]), "heating mode")
 
     async def read_adaptive_temp_control(self) -> dict:
         """Read adaptive temperature control setting from device."""
@@ -675,19 +671,22 @@ class EnstoThermostatManager:
             'enabled': enabled
         }
 
-    async def write_adaptive_temp_control(self, enabled: bool) -> bool:
+    async def write_adaptive_temp_control(self, enabled: bool) -> None:
         """Write adaptive temperature control setting to device."""
         # Create single byte data
         data = bytes([1 if enabled else 0])
 
-        return await self._ble_write(ADAPTIVE_TEMPERATURE_CONTROL_UUID, data, "adaptive temperature control")
+        await self._ble_write(ADAPTIVE_TEMPERATURE_CONTROL_UUID, data, "adaptive temperature control")
 
     async def read_device_name(self) -> Optional[str]:
         """
         Read device name via GATT characteristic.
         
         Returns:
-            str - Device name if successful, None if failed or device is unnamed
+            str - Device name, or None if the device is unnamed or the name is invalid
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Device name uses the split protocol (spec 1.1.4, 2.1.2)
         raw_data = await self._ble_read_split(DEVICE_NAME_UUID, "device name")
@@ -719,7 +718,10 @@ class EnstoThermostatManager:
                 hour (int): Hour (0-23)
                 minute (int): Minute (0-59)
                 second (int): Second (0-59)
-            None: If read fails
+            None: If the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Read raw data from device
         data = await self._ble_read(DATE_AND_TIME_UUID, "date and time from device")
@@ -748,7 +750,7 @@ class EnstoThermostatManager:
             "second": second
         }
 
-    async def write_date_and_time(self, year: int, month: int, day: int, hour: int, minute: int, second: int) -> bool:
+    async def write_date_and_time(self, year: int, month: int, day: int, hour: int, minute: int, second: int) -> None:
         """Write date and time to device.
         
         All time values must be in UTC as the device internally operates in UTC time 
@@ -762,8 +764,9 @@ class EnstoThermostatManager:
             minute: UTC minute (0-59)
             second: UTC second (0-59)
             
-        Returns:
-            bool: True if successful, False if failed
+        Raises:
+            ValueError: A value is out of range.
+            EnstoBleError: The write failed.
             
         Note:
             Device specification 2.2.1: MCU operates in UTC, data collection is 
@@ -772,23 +775,17 @@ class EnstoThermostatManager:
         """
         # Validate input values
         if not (0 <= year <= 9999):
-            _LOGGER.error("Invalid UTC year: %s", year)
-            return False
+            raise ValueError(f"Invalid UTC year: {year}")
         if not (1 <= month <= 12):
-            _LOGGER.error("Invalid UTC month: %s", month)
-            return False
+            raise ValueError(f"Invalid UTC month: {month}")
         if not (1 <= day <= 31):
-            _LOGGER.error("Invalid UTC day: %s", day)
-            return False
+            raise ValueError(f"Invalid UTC day: {day}")
         if not (0 <= hour <= 23):
-            _LOGGER.error("Invalid UTC hour: %s", hour)
-            return False
+            raise ValueError(f"Invalid UTC hour: {hour}")
         if not (0 <= minute <= 59):
-            _LOGGER.error("Invalid UTC minute: %s", minute)
-            return False
+            raise ValueError(f"Invalid UTC minute: {minute}")
         if not (0 <= second <= 59):
-            _LOGGER.error("Invalid UTC second: %s", second)
-            return False
+            raise ValueError(f"Invalid UTC second: {second}")
 
         _LOGGER.debug(
             "Writing UTC time to %s for %s: %04d-%02d-%02d %02d:%02d:%02d",
@@ -816,7 +813,7 @@ class EnstoThermostatManager:
         ])
 
         # Write to device
-        return await self._ble_write(DATE_AND_TIME_UUID, data, "UTC time to device")
+        await self._ble_write(DATE_AND_TIME_UUID, data, "UTC time to device")
 
     async def sync_date_and_time(self, drift_seconds: float) -> bool:
         """Set device clock to Home Assistant UTC time.
@@ -837,11 +834,16 @@ class EnstoThermostatManager:
 
         device_name = self.device_name or "Unknown Device"
         now = dt_util.utcnow()
-        success = await self.write_date_and_time(
-            now.year, now.month, now.day, now.hour, now.minute, now.second
-        )
+        try:
+            await self.write_date_and_time(
+                now.year, now.month, now.day, now.hour, now.minute, now.second
+            )
+        except EnstoBleError as e:
+            error = e
+        else:
+            error = None
 
-        if success:
+        if error is None:
             if failed_at is not None:
                 _LOGGER.info(
                     "Clock synchronization on %s (%s) recovered",
@@ -865,8 +867,8 @@ class EnstoThermostatManager:
 
         if failed_at is None:
             _LOGGER.warning(
-                "Failed to synchronize clock on %s (%s), retrying in %d min",
-                device_name, self.mac_address, CLOCK_SYNC_RETRY_DELAY // 60
+                "Failed to synchronize clock on %s (%s): %s, retrying in %d min",
+                device_name, self.mac_address, error, CLOCK_SYNC_RETRY_DELAY // 60
             )
         else:
             _LOGGER.debug(
@@ -885,7 +887,10 @@ class EnstoThermostatManager:
                 winter_to_summer_offset (int): Offset in minutes for winter->summer transition
                 summer_to_winter_offset (int): Offset in minutes for summer->winter transition
                 timezone_offset (int): Base timezone offset in minutes from UTC
-            None: If read fails
+            None: If the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Read raw data from device
         data = await self._ble_read(DAYLIGHT_SAVING_UUID, "daylight saving config")
@@ -918,7 +923,7 @@ class EnstoThermostatManager:
         winter_to_summer: int,
         summer_to_winter: int,
         timezone_offset: int
-    ) -> bool:
+    ) -> None:
         """Write daylight saving configuration to device.
         
         According to protocol specification (chapter 2.2.3), device needs proper timezone
@@ -949,8 +954,7 @@ class EnstoThermostatManager:
         # Timezone offset (UTC+2 = 120 minutes for Finland)
         data[6:8] = timezone_offset.to_bytes(2, byteorder='little', signed=True)
 
-        if not await self._ble_write(DAYLIGHT_SAVING_UUID, data, "daylight saving config"):
-            return False
+        await self._ble_write(DAYLIGHT_SAVING_UUID, data, "daylight saving config")
 
         _LOGGER.debug(
             "Wrote DST config to %s for %s: enabled=%s, timezone=%d min",
@@ -958,7 +962,6 @@ class EnstoThermostatManager:
             self.mac_address,
             enabled, timezone_offset
         )
-        return True
 
     async def read_floor_limits(self) -> Optional[dict]:
         """Read floor temperature limits from device.
@@ -967,7 +970,10 @@ class EnstoThermostatManager:
             dict with keys:
                 low_value: Min floor temp in °C (range 5-42)
                 high_value: Max floor temp in °C (range 13-50)
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         data = await self._ble_read(FLOOR_LIMITS_UUID, "floor limits")
         if not data or len(data) != 4:
@@ -978,15 +984,16 @@ class EnstoThermostatManager:
             'high_value': int.from_bytes(data[2:4], byteorder='little') / 100
         }
 
-    async def write_floor_limits(self, low_value: float, high_value: float) -> bool:
+    async def write_floor_limits(self, low_value: float, high_value: float) -> None:
         """Write floor temperature limits to device.
 
         Args:
             low_value: Min floor temp in °C (5-42)
             high_value: Max floor temp in °C (13-50)
 
-        Returns:
-            True if write successful, False otherwise
+        Raises:
+            ValueError: A value is out of range.
+            EnstoBleError: The write failed.
 
         Note:
             - Min must be at least 8°C lower than max
@@ -996,16 +1003,13 @@ class EnstoThermostatManager:
         """
         # Input validation
         if not (5 <= low_value <= 42):
-            _LOGGER.error("Min floor temp must be between 5-42°C")
-            return False
+            raise ValueError("Min floor temp must be between 5-42°C")
 
         if not (13 <= high_value <= 50):
-            _LOGGER.error("Max floor temp must be between 13-50°C")
-            return False
+            raise ValueError("Max floor temp must be between 13-50°C")
 
         if high_value - low_value < 8:
-            _LOGGER.error("Min must be at least 8°C lower than max")
-            return False
+            raise ValueError("Min must be at least 8°C lower than max")
 
         data = bytearray(4)
         low_raw = int(round(low_value * 100))
@@ -1013,15 +1017,13 @@ class EnstoThermostatManager:
         data[0:2] = low_raw.to_bytes(2, byteorder='little')
         data[2:4] = high_raw.to_bytes(2, byteorder='little')
 
-        if not await self._ble_write(FLOOR_LIMITS_UUID, data, "floor limits"):
-            return False
+        await self._ble_write(FLOOR_LIMITS_UUID, data, "floor limits")
 
         _LOGGER.debug(
             "Floor limits written successfully: min=%.1f °C, max=%.1f °C",
             low_value,
             high_value
         )
-        return True
 
     async def read_floor_sensor_config(self) -> Optional[dict]:
         """Read floor sensor configuration from device.
@@ -1033,7 +1035,10 @@ class EnstoThermostatManager:
                 sensor_broken_limit (int): ADC limit for broken sensor
                 resistance_25c (int): Sensor resistance at 25 °C in ohms
                 offset (float): Sensor offset in °C
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         data = await self._ble_read(FLOOR_SENSOR_TYPE_UUID, "floor sensor config")
         if not data:
@@ -1051,14 +1056,14 @@ class EnstoThermostatManager:
             'offset': int.from_bytes(data[11:13], byteorder='little', signed=True) / 10
         }
 
-    async def write_floor_sensor_config(self, params: dict) -> bool:
+    async def write_floor_sensor_config(self, params: dict) -> None:
         """Write floor sensor configuration to device.
 
         Args:
             params: Floor sensor parameters, one of the FLOOR_SENSOR_CONFIG entries
 
-        Returns:
-            True if write successful, False otherwise
+        Raises:
+            EnstoBleError: The write failed.
         """
         data = bytearray(13)
         data[0] = params["sensor_type"]
@@ -1069,7 +1074,7 @@ class EnstoThermostatManager:
         data[9:11] = params["resistance_25c"].to_bytes(2, byteorder='little')
         data[11:13] = params["offset"].to_bytes(2, byteorder='little', signed=True)
 
-        return await self._ble_write(FLOOR_SENSOR_TYPE_UUID, data, "floor sensor config")
+        await self._ble_write(FLOOR_SENSOR_TYPE_UUID, data, "floor sensor config")
 
     async def read_room_sensor_calibration(self) -> dict:
         """Read room sensor calibration value."""
@@ -1084,16 +1089,15 @@ class EnstoThermostatManager:
             'calibration_value': calibration_value
         }
 
-    async def write_room_sensor_calibration(self, value: float) -> bool:
+    async def write_room_sensor_calibration(self, value: float) -> None:
         """Write room sensor calibration value."""
         if not (-5.0 <= value <= 5.0):
-            _LOGGER.error("Calibration value must be between -5.0 and +5.0 °C: %s", value)
-            return False
+            raise ValueError(f"Calibration value must be between -5.0 and +5.0 °C: {value}")
 
         raw_value = int(value * 10)
         data = raw_value.to_bytes(2, byteorder='little', signed=True)
 
-        return await self._ble_write(CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID, data, "room sensor calibration")
+        await self._ble_write(CALIBRATION_VALUE_FOR_ROOM_TEMPERATURE_UUID, data, "room sensor calibration")
 
     async def read_software_revision(self) -> Optional[str]:
         """Read software revision string."""
@@ -1136,23 +1140,23 @@ class EnstoThermostatManager:
             'heating_power': heating_power
         }
 
-    async def write_heating_power(self, value: int) -> bool:
+    async def write_heating_power(self, value: int) -> None:
         """Write custom heating power configuration to device.
         
         Args:
             value (int): Heating power in Watts (range 0-9999)
             
-        Returns:
-            bool: True if successful, False otherwise
+        Raises:
+            ValueError: A value is out of range.
+            EnstoBleError: The write failed.
         """
 
         if not (0 <= value <= 9999):
-            _LOGGER.error("Heating power value must be between 0 and 9999")
-            return False
+            raise ValueError("Heating power value must be between 0 and 9999")
 
         data = value.to_bytes(2, byteorder='little')
 
-        return await self._ble_write(HEATING_POWER_UUID, data, "custom heating power value")
+        await self._ble_write(HEATING_POWER_UUID, data, "custom heating power value")
 
     async def read_floor_area(self) -> dict:
         """Read custom floor area configuration from device.
@@ -1173,26 +1177,26 @@ class EnstoThermostatManager:
             'floor_area': floor_area
         }
 
-    async def write_floor_area(self, value: int) -> bool:
+    async def write_floor_area(self, value: int) -> None:
         """Write custom floor area configuration to device.
         
         Args:
             value (int): Floor area in square meters (m²)
             
-        Returns:
-            bool: True if successful, False otherwise
+        Raises:
+            ValueError: A value is out of range.
+            EnstoBleError: The write failed.
             
         Note:
             Maximum value is 65535 due to uint16_t limitation
         """
 
         if not (0 <= value <= 65535):
-            _LOGGER.error("Floor area value must be between 0 and 65535 for uint16_t")
-            return False
+            raise ValueError("Floor area value must be between 0 and 65535 for uint16_t")
 
         data = value.to_bytes(2, byteorder='little')
 
-        return await self._ble_write(FLOOR_AREA_UUID, data, "custom floor area value")
+        await self._ble_write(FLOOR_AREA_UUID, data, "custom floor area value")
 
     async def read_energy_unit(self) -> dict:
         """Read energy unit configuration from device.
@@ -1236,12 +1240,11 @@ class EnstoThermostatManager:
             'price': price
         }
 
-    async def write_energy_unit(self, currency: int, price: float) -> bool:
+    async def write_energy_unit(self, currency: int, price: float) -> None:
         """Write energy unit configuration to device."""
 
         if not (0 <= price <= 655.35):
-            _LOGGER.error("Price must be between 0 and 655.35: %s", price)
-            return False
+            raise ValueError(f"Price must be between 0 and 655.35: {price}")
 
         # Prepare data packet
         data = bytearray(4)
@@ -1253,15 +1256,13 @@ class EnstoThermostatManager:
         data[2:4] = price_raw.to_bytes(2, byteorder='little')
 
         # Write to device
-        if not await self._ble_write(ENERGY_UNIT_UUID, data, "energy unit configuration"):
-            return False
+        await self._ble_write(ENERGY_UNIT_UUID, data, "energy unit configuration")
 
         _LOGGER.debug(
             "Wrote energy unit config for %s (%s) - Currency: %s (%d), Price: %.2f",
             self.device_name or "Unknown Device", self.mac_address,
             CURRENCY_MAP.get(currency, "Unknown"), currency, price
         )
-        return True
 
     async def read_power_consumption(self) -> dict:
         """Read real time power consumption data.
@@ -1316,6 +1317,8 @@ class EnstoThermostatManager:
                 'measurements': measurements
             }
 
+        except EnstoBleError:
+            raise
         except Exception as e:
             _LOGGER.error("Error reading power consumption: %s", e)
             return None
@@ -1328,7 +1331,10 @@ class EnstoThermostatManager:
                 - daily_power: List of last 7 days power consumption data
                 - monthly_power: List of last 12 months power consumption data
                 - temperature_history: List of hourly temperature readings for past week
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         try:
             data = await self._ble_read_split(MONITORING_DATA_UUID, "monitoring data")
@@ -1452,6 +1458,8 @@ class EnstoThermostatManager:
 
             return result
 
+        except EnstoBleError:
+            raise
         except Exception as e:
             _LOGGER.error("Error reading monitoring data: %s", e)
             return None
@@ -1521,7 +1529,7 @@ class EnstoThermostatManager:
         offset_temperature: float,
         offset_percentage: int,
         enabled: bool
-    ) -> bool:
+    ) -> None:
         """Write vacation time configuration to device.
 
         Args:
@@ -1533,12 +1541,10 @@ class EnstoThermostatManager:
         """
         # Validate input ranges
         if not (-20 <= offset_temperature <= 20):
-            _LOGGER.error("Temperature offset must be between -20 and +20: %s", offset_temperature)
-            return False
+            raise ValueError(f"Temperature offset must be between -20 and +20: {offset_temperature}")
 
         if not (-100 <= offset_percentage <= 100):
-            _LOGGER.error("Percentage offset must be between -100 and 100: %s", offset_percentage)
-            return False
+            raise ValueError(f"Percentage offset must be between -100 and 100: {offset_percentage}")
 
         # Convert UTC times to local (wall clock) times
         local_from = dt_util.as_local(time_from)
@@ -1547,13 +1553,11 @@ class EnstoThermostatManager:
         # Format for device (remove timezone info)
         from_year = local_from.year - 2000
         if not (0 <= from_year <= 255):
-            _LOGGER.error("Start year must be between 2000-2255, got %s", local_from.year)
-            return False
+            raise ValueError(f"Start year must be between 2000-2255, got {local_from.year}")
 
         to_year = local_to.year - 2000
         if not (0 <= to_year <= 255):
-            _LOGGER.error("End year must be between 2000-2255, got %s", local_to.year)
-            return False
+            raise ValueError(f"End year must be between 2000-2255, got {local_to.year}")
 
         # Read current settings to preserve active state
         current_settings = await self.read_vacation_time()
@@ -1588,13 +1592,16 @@ class EnstoThermostatManager:
         data[13] = 1 if enabled else 0  # User-set enabled state - byte 13
         data[14] = 1 if current_active else 0  # Preserve current active state - byte 14 (read only)
 
-        return await self._ble_write(VACATION_TIME_UUID, data, "vacation time")
+        await self._ble_write(VACATION_TIME_UUID, data, "vacation time")
 
     async def read_calendar_mode(self) -> Optional[dict]:
         """Read calendar mode setting from device.
         
         Returns:
-            dict with key 'enabled' (bool) or None if failed
+            dict with key 'enabled' (bool), or None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
         """
         # Read single byte from device
         data = await self._ble_read(CALENDAR_MODE_UUID, "calendar mode")
@@ -1605,25 +1612,23 @@ class EnstoThermostatManager:
 
         return {'enabled': enabled}
 
-    async def write_calendar_mode(self, enabled: bool) -> bool:
+    async def write_calendar_mode(self, enabled: bool) -> None:
         """Write calendar mode setting to device.
         
         Args:
             enabled: True to enable calendar mode, False to disable
             
-        Returns:
-            True if successful, False otherwise
+        Raises:
+            EnstoBleError: The write failed.
         """
         # Create single byte data
         data = bytes([1 if enabled else 0])
 
         # Write to device
-        if not await self._ble_write(CALENDAR_MODE_UUID, data, "calendar mode"):
-            return False
+        await self._ble_write(CALENDAR_MODE_UUID, data, "calendar mode")
 
         _LOGGER.debug("Action [Calendar Mode %s] for [%s]: success",
                      "Enable" if enabled else "Disable", self.mac_address)
-        return True
 
     async def read_calendar_day(self, day: int) -> Optional[dict]:
         """Read calendar day programs from device.
@@ -1632,15 +1637,18 @@ class EnstoThermostatManager:
             day: Day number (1=Monday, 7=Sunday)
             
         Returns:
-            dict with 'day' and 'programs' list, or None if failed
+            dict with 'day' and 'programs' list, or None if the day or the
+            data from the device is invalid
+
+        Raises:
+            EnstoBleError: The read or the control write failed.
         """
         if not (1 <= day <= 7):
             _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
             return None
 
         # Write day number to control characteristic
-        if not await self._ble_write(CALENDAR_CONTROL_UUID, bytes([day]), "calendar control"):
-            return None
+        await self._ble_write(CALENDAR_CONTROL_UUID, bytes([day]), "calendar control")
 
         # Add small delay to let device process the request
         await asyncio.sleep(0.2)
@@ -1681,7 +1689,7 @@ class EnstoThermostatManager:
             'programs': programs
         }
 
-    async def write_calendar_day(self, day: int, programs: list) -> bool:
+    async def write_calendar_day(self, day: int, programs: list) -> None:
         """Write calendar day programs to device.
         
         Args:
@@ -1690,16 +1698,15 @@ class EnstoThermostatManager:
                      start_hour, start_minute, end_hour, end_minute,
                      temp_offset, power_offset, enabled
                      
-        Returns:
-            True if successful, False otherwise
+        Raises:
+            ValueError: A value is out of range.
+            EnstoBleError: The write failed.
         """
         if not (1 <= day <= 7):
-            _LOGGER.error("Invalid day number: %s (must be 1-7)", day)
-            return False
+            raise ValueError(f"Invalid day number: {day} (must be 1-7)")
 
         if len(programs) > 6:
-            _LOGGER.error("Too many programs: %s (max 6)", len(programs))
-            return False
+            raise ValueError(f"Too many programs: {len(programs)} (max 6)")
 
         # Create 49-byte data packet; unused programs stay all zeros (disabled)
         data = bytearray(49)
@@ -1712,8 +1719,7 @@ class EnstoThermostatManager:
                 # Validate program data
                 for field in ['start_hour', 'start_minute', 'end_hour', 'end_minute', 'temp_offset', 'power_offset', 'enabled']:
                     if field not in program:
-                        _LOGGER.error("Missing field '%s' in program %d", field, i)
-                        return False
+                        raise ValueError(f"Missing field '{field}' in program {i}")
 
                 data[offset] = program['start_hour']
                 data[offset + 1] = program['start_minute']
@@ -1728,22 +1734,19 @@ class EnstoThermostatManager:
                 data[offset + 6] = program['power_offset'].to_bytes(1, byteorder='little', signed=True)[0]
                 data[offset + 7] = 1 if program['enabled'] else 0
         except Exception as e:
-            _LOGGER.error("Invalid calendar program data: %s", e)
-            return False
+            raise ValueError(f"Invalid calendar program data: {e}") from e
 
         # Tell device which day we're writing to
-        if not await self._ble_write(CALENDAR_CONTROL_UUID, bytes([day]), "calendar control"):
-            return False
+        await self._ble_write(CALENDAR_CONTROL_UUID, bytes([day]), "calendar control")
 
         # Write using split protocol
-        if not await self._ble_write_split(CALENDAR_DAY_UUID, bytes(data), "calendar day"):
-            return False
+        await self._ble_write_split(CALENDAR_DAY_UUID, bytes(data), "calendar day")
 
         # Add small delay to let device process the request
         await asyncio.sleep(0.2)
 
         # Save to flash (write 0 to control characteristic)
-        return await self._ble_write(CALENDAR_CONTROL_UUID, bytes([0]), "calendar control")
+        await self._ble_write(CALENDAR_CONTROL_UUID, bytes([0]), "calendar control")
 
     async def read_force_control(self) -> Optional[dict]:
         """Read force control / external control configuration from device.
@@ -1756,7 +1759,10 @@ class EnstoThermostatManager:
                 temperature (float): Absolute temperature for mode 5 (5-35°C)
                 temperature_offset (float): Temperature offset for mode 6 (-20 to +20°C)
                 data_length (int): Length of data received from device
-            None if read fails
+            None if the device returned invalid data
+
+        Raises:
+            EnstoBleError: The read failed.
 
         Note:
             Mode values:
@@ -1822,7 +1828,7 @@ class EnstoThermostatManager:
         )
         return None
 
-    async def write_force_control(self, mode: int, temperature: float, temperature_offset: float) -> bool:
+    async def write_force_control(self, mode: int, temperature: float, temperature_offset: float) -> None:
         """Write force control / external control configuration to device.
 
         Args:
@@ -1831,27 +1837,20 @@ class EnstoThermostatManager:
             temperature: Absolute temperature for mode 5 (5.0 to 50.0°C)
             temperature_offset: Temperature offset for mode 6 (-20.0 to +20.0°C)
 
-        Returns:
-            True if successful, False otherwise
+        Raises:
+            EnstoBleError: The current settings could not be read or were invalid,
+                the firmware does not support external control, or the write failed.
         """
         device_name = self.device_name or "Unknown Device"
 
         # Read current values to preserve unchanged settings
         current = await self._ble_read(FORCE_CONTROL_UUID, "force control")
         if not current:
-            _LOGGER.error(
-                "Write Force Control %s for %s: could not read current settings",
-                device_name, self.mac_address
-            )
-            return False
+            raise EnstoBleError("Invalid force control data from the device")
 
-        # Check for legacy 1-byte format (old firmware)
+        # Old firmware has a 1-byte format without external control
         if len(current) < 19:
-            _LOGGER.debug(
-                "Write Force Control %s for %s: device uses legacy 1-byte format, external control not supported",
-                device_name, self.mac_address
-            )
-            return False
+            raise EnstoBleError("External control is not supported by this firmware")
 
         # Start with current data
         data = bytearray(current)
@@ -1868,8 +1867,7 @@ class EnstoThermostatManager:
         if mode in EXTERNAL_CONTROL_MODES:
             data[17] = mode
 
-        if not await self._ble_write(FORCE_CONTROL_UUID, data, "force control"):
-            return False
+        await self._ble_write(FORCE_CONTROL_UUID, data, "force control")
 
         mode_names = {2: "Off", 5: "Temperature", 6: "Temperature change"}
 
@@ -1880,4 +1878,3 @@ class EnstoThermostatManager:
             temperature, temperature_offset
         )
 
-        return True

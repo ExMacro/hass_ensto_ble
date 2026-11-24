@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import REAL_TIME_INDICATION_UUID, SCAN_INTERVAL
+from .exceptions import EnstoBleError
 
 if TYPE_CHECKING:
     from .ensto_thermostat_manager import EnstoThermostatManager
@@ -47,6 +48,31 @@ ENERGY_UNIT = "energy_unit"
 DATE_TIME = "date_time"
 POWER_CONSUMPTION = "power_consumption"
 MONITORING = "monitoring"
+
+
+def _utc_offsets() -> tuple[int, int]:
+    """Return Home Assistant's UTC offsets in January and July, in minutes."""
+    year = dt_util.utcnow().year
+    return tuple(
+        int(datetime(year, month, 15, 12, tzinfo=dt_util.UTC)
+            .astimezone(dt_util.DEFAULT_TIME_ZONE).utcoffset().total_seconds() // 60)
+        for month in (1, 7)
+    )
+
+
+def standard_utc_offset() -> int:
+    """Return Home Assistant's standard time UTC offset in minutes, e.g. 120 for Finland.
+
+    The thermostat stores this offset and adds the summer hour itself when
+    automatic daylight saving is on, the same way the Ensto app sets it up.
+    """
+    return min(_utc_offsets())
+
+
+def has_daylight_saving() -> bool:
+    """Return True if Home Assistant's time zone has summer time."""
+    january, july = _utc_offsets()
+    return january != july
 
 
 def device_utc(date_time: dict[str, int]) -> datetime | None:
@@ -87,6 +113,14 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             always_update=False,
         )
         self.manager = manager
+        # One operation at a time: an update reading the device, or an action
+        # writing and reading back. Otherwise an update that read a value before
+        # a write would put the old value back when it finishes.
+        self.lock = asyncio.Lock()
+        # Connection on which the time zone was last checked, see _check_time_zone()
+        self._time_zone_checked_at: float | None = None
+        # True after warning that automatic daylight saving is off
+        self._dst_off_warned = False
         # Hour of the last successful monitoring data read, None until the first read
         self._history_hour: datetime | None = None
         self._readers: dict[str, Callable[[], Awaitable[Any]]] = {
@@ -133,9 +167,29 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 await asyncio.sleep(wait)
 
-        raw_data = await manager._ble_read_split(
-            REAL_TIME_INDICATION_UUID, "real-time indication"
-        )
+        # Connecting stays outside the lock, so actions don't wait for a long
+        # connection attempt. Home Assistant stores the returned data before an
+        # action waiting for the lock can run, so the action reads back into it.
+        async with self.lock:
+            return await self._read_data()
+
+    async def _read_data(self) -> dict[str, Any]:
+        """Read the real-time data and the characteristics the entities use.
+
+        Returns:
+            The new coordinator data.
+
+        Raises:
+            UpdateFailed: The real-time data could not be read.
+        """
+        manager = self.manager
+
+        try:
+            raw_data = await manager._ble_read_split(
+                REAL_TIME_INDICATION_UUID, "real-time indication"
+            )
+        except EnstoBleError as err:
+            raise UpdateFailed(str(err)) from err
         if not raw_data:
             raise UpdateFailed("Could not read real-time data")
 
@@ -161,9 +215,19 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if history_hour == self._history_hour:
             keys.discard(MONITORING)
 
+        read_failed = False
         for key in keys:
-            value = await self._read(key)
-            # Keep the previous value if one characteristic fails
+            try:
+                value = await self._read(key)
+            except EnstoBleError as err:
+                # A failed read drops the connection, so the remaining reads would
+                # fail too. Keep the previous values; the next update reconnects.
+                _LOGGER.debug(
+                    "Stopping update of %s: %s", manager.mac_address, err
+                )
+                read_failed = True
+                break
+            # Keep the previous value if the device returned invalid data
             if value is None:
                 continue
             if key == DATE_TIME and device_utc(value) is None:
@@ -179,7 +243,74 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif key == MONITORING:
                 self._history_hour = history_hour
 
+        if not read_failed and manager.connected_at != self._time_zone_checked_at:
+            await self._check_time_zone(data)
+
         return data
+
+    async def _check_time_zone(self, data: dict[str, Any]) -> None:
+        """Keep the thermostat's time zone offset at Home Assistant's standard offset.
+
+        The thermostat runs schedules and stores history in its own local time:
+        UTC + the stored offset, plus one hour in summer when automatic daylight
+        saving is on. The integration reads and writes those times as Home
+        Assistant local time, so the offset must match. Versions up to v0.5.7
+        could leave the summer offset (180 min for Finland) with automatic
+        daylight saving off, which puts the thermostat an hour ahead in winter.
+
+        Checked once per connection: only a write changes the offset, and the
+        Ensto app can write only while Home Assistant is disconnected.
+
+        Args:
+            data: Coordinator data being built; the daylight saving settings
+                are stored in it.
+        """
+        manager = self.manager
+        device = manager.device_name or "Unknown Device"
+        try:
+            config = await manager.read_daylight_saving()
+        except EnstoBleError as err:
+            _LOGGER.debug("Could not check time zone of %s: %s", manager.mac_address, err)
+            return
+        if config is None:
+            return
+
+        expected = standard_utc_offset()
+        if config['timezone_offset'] != expected:
+            try:
+                await manager.write_daylight_saving(
+                    enabled=config['enabled'],
+                    winter_to_summer=0,  # Ensto app writes 0, device does not store it
+                    summer_to_winter=0,
+                    timezone_offset=expected,
+                )
+            except EnstoBleError as err:
+                _LOGGER.debug("Could not correct time zone of %s: %s", manager.mac_address, err)
+                return
+            _LOGGER.info(
+                "Corrected time zone offset on %s (%s) from %d to %d min",
+                device, manager.mac_address, config['timezone_offset'], expected,
+            )
+            config = {
+                **config,
+                'winter_to_summer_offset': 0,
+                'summer_to_winter_offset': 0,
+                'timezone_offset': expected,
+            }
+        data[DAYLIGHT_SAVING] = config
+        self._time_zone_checked_at = manager.connected_at
+
+        # Automatic daylight saving is the user's choice, as in the Ensto app
+        if not config['enabled'] and has_daylight_saving():
+            if not self._dst_off_warned:
+                _LOGGER.warning(
+                    "Automatic daylight saving is off on %s (%s): in summer its "
+                    "schedules and history are 1 h off from Home Assistant time",
+                    device, manager.mac_address,
+                )
+                self._dst_off_warned = True
+        else:
+            self._dst_off_warned = False
 
     async def _sync_clock(self, data: dict[str, Any]) -> None:
         """Set the device clock to Home Assistant time if it has drifted.
@@ -199,16 +330,35 @@ class EnstoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
     async def _read(self, key: str) -> Any:
-        """Read one characteristic, None on failure."""
+        """Read one characteristic.
+
+        Args:
+            key: Data key of the characteristic, e.g. BOOST.
+
+        Returns:
+            The value, or None if the device returned invalid data.
+
+        Raises:
+            EnstoBleError: The read failed.
+        """
         try:
             return await self._readers[key]()
+        except EnstoBleError:
+            raise
         except Exception as err:
             _LOGGER.debug("Failed to read %s from %s: %s", key, self.manager.mac_address, err)
             return None
 
     async def async_refresh_key(self, key: str) -> None:
-        """Read one characteristic again, e.g. after an entity wrote it."""
-        value = await self._read(key)
+        """Read one characteristic again, e.g. after an entity wrote it.
+
+        A failed read keeps the previous value; the next update reads it again.
+        """
+        try:
+            value = await self._read(key)
+        except EnstoBleError as err:
+            _LOGGER.debug("Failed to read %s again from %s: %s", key, self.manager.mac_address, err)
+            return
         if value is not None and self.data is not None:
             self.data[key] = value
             self.async_update_listeners()

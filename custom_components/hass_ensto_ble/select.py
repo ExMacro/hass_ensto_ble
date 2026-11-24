@@ -1,5 +1,4 @@
 """Support for Ensto BLE selects."""
-import logging
 from typing import Optional
 
 from homeassistant.components.select import SelectEntity
@@ -16,8 +15,6 @@ from .const import (
 from .coordinator import FLOOR_SENSOR, FORCE_CONTROL, HEATING_MODE
 
 from . import EnstoConfigEntry
-
-_LOGGER = logging.getLogger(__name__)
 
 # One write at a time, so read-modify-write actions don't overwrite each other
 PARALLEL_UPDATES = 1
@@ -91,8 +88,8 @@ class EnstoHeatingModeSelect(EnstoCoordinatorEntity, SelectEntity):
         """
         # Find mode number by name
         mode_number = next(num for num, name in MODE_MAP.items() if name == option)
-        await self._manager.write_heating_mode(mode_number)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(self._manager.write_heating_mode(mode_number))
 
 class EnstoFloorSensorSelect(EnstoCoordinatorEntity, SelectEntity):
     """Representation of Ensto Floor Sensor Type select."""
@@ -113,14 +110,10 @@ class EnstoFloorSensorSelect(EnstoCoordinatorEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change floor sensor type."""
-        try:
-            if option in FLOOR_SENSOR_CONFIG:
-                # Write configuration to device
-                if await self._manager.write_floor_sensor_config(FLOOR_SENSOR_CONFIG[option]):
-                    _LOGGER.debug("Floor sensor configuration successfully changed.")
-        except Exception as e:
-            _LOGGER.error("Error setting floor sensor type: %s", e)
-        await self._async_refresh()
+        self._check_connected()
+        await self._write(
+            self._manager.write_floor_sensor_config(FLOOR_SENSOR_CONFIG[option])
+        )
 
 class EnstoExternalControlModeSelect(EnstoCoordinatorEntity, SelectEntity):
     """Select entity for external control mode.
@@ -148,20 +141,13 @@ class EnstoExternalControlModeSelect(EnstoCoordinatorEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change external control mode."""
-        try:
-            # Read fresh settings, the coordinator data can be up to 30 s old
-            current = await self._manager.read_force_control()
-            if current:
-                # Find mode number by name
-                mode = next(
-                    num for num, name in EXTERNAL_CONTROL_MODES.items()
-                    if name == option
-                )
-                await self._manager.write_force_control(
-                    mode=mode,
-                    temperature=current['temperature'],
-                    temperature_offset=current['temperature_offset']
-                )
-        except Exception as e:
-            _LOGGER.error("Failed to set external control mode: %s", e)
-        await self._async_refresh()
+        mode = next(
+            num for num, name in EXTERNAL_CONTROL_MODES.items() if name == option
+        )
+        self._check_connected()
+        current = await self._read_current(self._manager.read_force_control)
+        await self._write(self._manager.write_force_control(
+            mode=mode,
+            temperature=current['temperature'],
+            temperature_offset=current['temperature_offset']
+        ))
